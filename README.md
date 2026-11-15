@@ -61,7 +61,7 @@ url="$(./qrtoss --server https://qr.your-domain.example --timeout 120)"
 
 Text output is the unmodified received string followed by LF. Text containing control characters is rejected with exit code 6; use `--jsonl` for arbitrary valid Unicode, embedded newlines, or controls. JSONL outputs one object, `{"text":"…"}`, followed by LF. The CLI never opens URLs or evaluates received text.
 
-Connection QRs expire after five minutes. Before receiving an item, the CLI refreshes expired pairing information and can recover from connection loss. `--timeout` limits the wait until an output-capable item is accepted, not a slow stdout write. After output, delivery confirmation and shutdown take at most two seconds; uncertain acknowledgement delivery does not turn successful output into an error. See [the specification](doc/spec.md#14-cli受信クライアント) for exact options and exit codes.
+Connection QRs expire after five minutes. Before receiving an item, the CLI refreshes expired pairing information and can recover from connection loss. `--timeout` limits the wait until an output-capable item is accepted, not a slow stdout write. After output, delivery confirmation and shutdown take at most two seconds; uncertain acknowledgement delivery does not turn successful output into an error. See [the specification](docs/spec.md#14-cli受信クライアント) for exact options and exit codes.
 
 Use an adequately wide terminal; `--qr full` can help if compact QR characters look distorted. `--pairing-url` explicitly permits printing the secret connection URL. For non-TTY stderr, use `--qr off --pairing-url`. Keep this URL private and avoid combining stdout and stderr when capturing output.
 
@@ -90,7 +90,7 @@ Release tooling creates the four macOS/Linux arm64/amd64 executables, checksum m
 
 Clients derive separate directional keys using HKDF-SHA256 and encrypt messages with AES-256-GCM after mutual proof verification. The relay sees connection metadata and ciphertext, not the pairing secret or plaintext. Rooms, keys, and deduplication records are transient; there is no transfer database, offline queue, telemetry, or external runtime CDN.
 
-The pairing QR grants access: do not share it. Encryption depends on trustworthy client code and devices. Source availability does not prove that a particular host serves that source. The protocol and implementation have not received an independent external security audit. See [SECURITY.md](SECURITY.md) and [the full specification](doc/spec.md).
+The pairing QR grants access: do not share it. Encryption depends on trustworthy client code and devices. Source availability does not prove that a particular host serves that source. The protocol and implementation have not received an independent external security audit. See [SECURITY.md](SECURITY.md) and [the full specification](docs/spec.md).
 
 ## License
 

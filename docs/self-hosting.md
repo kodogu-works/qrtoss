@@ -1,6 +1,6 @@
 # Self-hosting and operations
 
-The English and Japanese quickstarts are in [README.md](../README.md) and [README.ja.md](../README.ja.md). The protocol contract is [doc/spec.md](../doc/spec.md).
+The English and Japanese quickstarts are in [README.md](../README.md) and [README.ja.md](../README.ja.md). The protocol contract is [docs/spec.md](spec.md).
 
 ## Production deployment
 

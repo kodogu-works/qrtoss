@@ -1,6 +1,6 @@
 # Security
 
-qrtoss is an initial implementation of the protocol in [doc/spec.md](doc/spec.md). No independent external security audit has been completed.
+qrtoss is an initial implementation of the protocol in [docs/spec.md](docs/spec.md). No independent external security audit has been completed.
 
 Report security issues privately to the maintainer, Synge Todo, at **wistaria@phys.s.u-tokyo.ac.jp**. Include the affected commit/version, reproduction steps with synthetic data, and impact. Do not include real pairing URLs, payloads, secrets, tokens, heap dumps or production packet captures in a public issue. If the repository has private vulnerability reporting enabled, that channel is also appropriate.
 

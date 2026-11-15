@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 26 and Go 1.24 or later. Start with [doc/spec.md](doc/spec.md); security-sensitive wire changes must be reflected in the shared definitions, both clients, tests and documentation.
+Use Node.js 26 and Go 1.24 or later. Start with [docs/spec.md](docs/spec.md); security-sensitive wire changes must be reflected in the shared definitions, both clients, tests and documentation.
 
 ```sh
 npm ci
