@@ -1,0 +1,38 @@
+{
+  "room": "YGFiY2RlZmdoaWprbG1ubw",
+  "peer": "cHFyc3R1dnd4eXp7fH1-fw",
+  "psk": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "rNonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "sNonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+  "senderProof": "52ggo6BOi076rjXRvUGLyoNsKGRewDam67G9zJ70OtA",
+  "receiverProof": "uv4Bk9sygs1pRgWAp8ipykYnsvK1MjG6EGbr1zOgcwU",
+  "messages": [
+    {
+      "type": "ready"
+    },
+    {
+      "type": "ready_ack"
+    },
+    {
+      "type": "mode",
+      "value": "stdout"
+    },
+    {
+      "type": "data",
+      "id": "gIGCg4SFhoeIiYqLjI2Ojw",
+      "textB64": "44GT44KT44Gr44Gh44Gv8J-YgApxcnRvc3M"
+    },
+    {
+      "type": "ack",
+      "id": "gIGCg4SFhoeIiYqLjI2Ojw",
+      "status": "received"
+    }
+  ],
+  "ciphertexts": [
+    "xWBcdH43z6NuMolTwXUQ8ROkglrcOCm9yXPhC8VHM24",
+    "lw2kpyv687cuL0j4yUzC1RF5Xum6cakLVcTRdTac0pyC4aLo",
+    "sFEcgPGJL50d9PyjDsxnfnCdhzC-N0XymK9NVWK8TKrhc9v_7dBQFuJ_DhrnzzaQ",
+    "LUVev9lT_Aow2OmRQzKmR3atZKelw8OVcZWF9P3Dg-nbKkMj6D3hJ9jxx7M_uy00TIxpkyPJWg3BXmJYYnAEqPlDTBMi7UBDvB_DgYMU8l6lCZ6eVGqAJIOyR-SfFRvmye_RKvUM_8bNXq_4iQ",
+    "q6t7P7iEUN86FiSrVhFtF-UUq1COy9e1WNb98lXg7kDIkt339-WB9LDx0KwL7Ao220b8C_4PsgbVCbFrNGv5tRk-RG-kuCXc-U7MPTTjBvg"
+  ]
+}

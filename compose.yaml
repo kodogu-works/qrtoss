@@ -1,0 +1,65 @@
+services:
+  app:
+    image: ${QRTOSS_IMAGE:-qrtoss:0.1.0}
+    build:
+      context: .
+    environment:
+      NODE_ENV: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to your HTTPS origin in .env}
+      HOST: 0.0.0.0
+      PORT: "8080"
+      MAX_ROOMS: ${MAX_ROOMS:-1000}
+      MAX_SOCKETS: ${MAX_SOCKETS:-2200}
+      MAX_UNAUTHENTICATED_SOCKETS: ${MAX_UNAUTHENTICATED_SOCKETS:-100}
+      MAX_SOCKETS_PER_IP: ${MAX_SOCKETS_PER_IP:-60}
+      TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-172.30.0.2/32}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+    networks:
+      - relay
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    pids_limit: 128
+    mem_limit: 512m
+    restart: unless-stopped
+    stop_grace_period: 5s
+  proxy:
+    image: caddy:2.11.2-alpine@sha256:834468128c7696cec0ceea6172f7d692daf645ae51983ca76e39da54a97c570d
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to your HTTPS origin in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      relay:
+        ipv4_address: 172.30.0.2
+      edge: {}
+    depends_on:
+      app:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    restart: unless-stopped
+
+networks:
+  relay:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  edge: {}
+
+volumes:
+  caddy_data:
+  caddy_config:

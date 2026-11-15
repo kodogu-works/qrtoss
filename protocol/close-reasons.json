@@ -1,0 +1,8 @@
+{
+  "user_reset": "PEER_CLOSED",
+  "user_end": "PEER_CLOSED",
+  "navigating": "PEER_CLOSED",
+  "client_error": "PROTOCOL_ERROR",
+  "idle_timeout": "SESSION_EXPIRED",
+  "transfer_limit": "TRANSFER_LIMIT"
+}

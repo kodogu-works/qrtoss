@@ -1,0 +1,38 @@
+# Validation and release acceptance
+
+The implementation includes automated tests and a CI workflow. Automated desktop browsers and synthetic camera streams do not establish compatibility with real phone cameras, OS camera-to-browser handoff, every terminal, or a deployed HTTPS host.
+
+## Automated checks
+
+| Area | Check |
+| --- | --- |
+| Shared definitions | `npm run check:generated`; TS/Go output generated from `protocol/` |
+| Type/static checks | `npm run typecheck`, `npm run lint`, `go vet ./...` in `cli/` |
+| Crypto | Appendix A proof/ciphertext fixtures, tampering, canonical encodings, sequence replay, Unicode limits |
+| Relay | Real HTTP/WS authentication, capabilities, candidate/commit/ready lifecycle, roles, expiry, rate/capacity/size bounds, shutdown and static security headers |
+| Web | Content classification, language keys/error messages, control schemas, camera QR input, confirmation before send, display-only and same-tab auto-open flows |
+| CLI | Output encoding, strict options, crypto, single-message receipt, duplicate suppression, output/ack ordering and termination |
+| Interoperability | Actual TypeScript client and Go receiver with isolated TLS transport; no production TLS bypass |
+| Browsers | `npm run test:e2e`: Chromium, Firefox and WebKit with synthetic camera frames |
+| Dependency checks | `npm audit`, `govulncheck ./...` in `cli/` |
+| Distribution | Four CGO-free CLI build targets; Dockerfile/Compose checks in CI |
+
+CI is a recipe, not a claim that a remote workflow has already run. Consult actual command output and release evidence when evaluating a particular commit.
+
+## Local implementation verification
+
+During initial implementation on macOS arm64, Node.js 26.13.0 and Go 1.27.4 were used. The 36 Node unit/integration/interoperability tests, eight Chromium/WebKit browser tests, TypeScript/i18n/generated-definition checks, production build, Go race tests and Go vet passed. All four CLI target binaries and version-pinned launcher/formula generation were built locally. Browser tests exercised actual QR decoding from synthetic camera streams, camera-track shutdown, CSP without violations, no content storage and explicit confirmation before transfer.
+
+Firefox could not launch its temporary test profile in this macOS environment; its tests remain configured in CI and are not claimed as locally passed. Docker image/Compose execution and real-phone/terminal support checks remain unverified here.
+
+The npm dependency audit reported no vulnerabilities. Go vulnerability analysis reported no reachable vulnerable symbols or imported vulnerable packages; its module-level report identified GO-2026-5024 in the Windows-only portion of `golang.org/x/sys v0.33.0`, which this macOS/Linux-only CLI does not import. Re-run both audits at release time; these results are not a permanent security guarantee.
+
+## Required manual release evidence
+
+- iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.
+- Actual terminal apps on macOS/Linux, both CPU architectures: compact/full QR readability, colors, ambiguous character widths, redirected stdout, non-TTY stderr and SSH.
+- A real HTTPS self-hosted deployment: certificate trust, reverse-proxy WebSocket handling, configured Origin, CSP, restart behavior, no payload capture or persistent transfer storage.
+- Signed release assets, independent public-key instructions, launcher failure/concurrency behavior and Homebrew installation after real distribution URLs are selected.
+- Independent protocol/implementation review and accurate disclosure of external audit status.
+
+These manual checks are not completed by running the automated suite. This initial development session does not claim an externally audited or publicly deployed release. The local environment has no running Docker daemon/Compose plugin, so container execution must be verified in CI or on a Docker host.

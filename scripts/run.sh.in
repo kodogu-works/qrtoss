@@ -1,0 +1,68 @@
+#!/bin/sh
+# This template is populated with one release's immutable URLs and checksums.
+# HTTPS script delivery is a trust boundary; hashes do not authenticate the script.
+qrtoss_main() (
+ set -eu
+ version=__VERSION__
+ base=__BASE_URL__
+ os=$(uname -s) || exit 126
+ arch=$(uname -m) || exit 126
+ case "$os" in
+  Darwin) os=darwin
+   if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = 1 ]; then arch=arm64; fi;;
+  Linux) os=linux;;
+  *) echo 'Unsupported operating system' >&2; exit 126;;
+ esac
+ case "$arch" in aarch64|arm64) arch=arm64;; x86_64|amd64) arch=amd64;; *) echo 'Unsupported CPU' >&2; exit 126;; esac
+ case "${os}_${arch}" in
+  darwin_arm64) expected=__DARWIN_ARM64_SHA256__;;
+  darwin_amd64) expected=__DARWIN_AMD64_SHA256__;;
+  linux_arm64) expected=__LINUX_ARM64_SHA256__;;
+  linux_amd64) expected=__LINUX_AMD64_SHA256__;;
+ esac
+ command -v curl >/dev/null 2>&1 || { echo 'curl is required' >&2; exit 127; }
+ if command -v sha256sum >/dev/null 2>&1; then hash_kind=sha256sum
+ elif command -v shasum >/dev/null 2>&1; then hash_kind=shasum
+ elif command -v openssl >/dev/null 2>&1; then hash_kind=openssl
+ else echo 'A SHA-256 verification tool is required' >&2; exit 127; fi
+ hash_file() {
+  case "$hash_kind" in
+   sha256sum) sha256sum "$1" | awk '{print $1}';;
+   shasum) shasum -a 256 "$1" | awk '{print $1}';;
+   openssl) openssl dgst -sha256 "$1" | awk '{print $NF}';;
+  esac
+ }
+ command -v awk >/dev/null 2>&1 || exit 127
+ umask 077
+ case "$os" in darwin) cache_root=${HOME:?}/Library/Caches/qrtoss;; linux) cache_root=${XDG_CACHE_HOME:-${HOME:?}/.cache}/qrtoss;; esac
+ mkdir -p "$cache_root" || exit 82
+ # Reject an untrusted pre-existing cache. Its ownership must be the caller's.
+ [ ! -L "$cache_root" ] && [ -d "$cache_root" ] && [ -O "$cache_root" ] || exit 82
+ if [ "$os" = darwin ]; then permissions=$(stat -f '%Lp' "$cache_root")
+ else permissions=$(stat -c '%a' "$cache_root"); fi
+ case "$permissions" in *[2367][0-7]|*[0-7][2367]) echo 'Cache is writable by another user' >&2; exit 82;; esac
+ cache=$cache_root/${version}_${os}_${arch}
+ if [ -e "$cache" ] || [ -L "$cache" ]; then
+  [ -f "$cache" ] && [ ! -L "$cache" ] && [ -O "$cache" ] || exit 82
+  [ "$(hash_file "$cache")" = "$expected" ] || { echo 'Cached checksum mismatch' >&2; exit 81; }
+ else
+  staging=$(mktemp -d "$cache_root/.download.XXXXXXXX") || exit 82
+  cleanup() { [ -z "${staging:-}" ] || rm -rf -- "$staging"; }
+  trap cleanup 0
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  name=qrtoss_${version}_${os}_${arch}
+  echo 'Downloading versioned qrtoss binary…' >&2
+  curl --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 -fsSL "$base/$name" -o "$staging/qrtoss" </dev/null || exit 80
+  [ "$(hash_file "$staging/qrtoss")" = "$expected" ] || { echo 'Checksum mismatch' >&2; exit 81; }
+  chmod 700 "$staging/qrtoss" || exit 82
+  # rename stays within one cache filesystem; only a complete verified file wins.
+  mv -f "$staging/qrtoss" "$cache" || exit 82
+  cleanup
+  staging=
+  trap - 0 INT TERM
+ fi
+ [ "$(hash_file "$cache")" = "$expected" ] || exit 81
+ exec "$cache" "$@" </dev/null
+)
+qrtoss_main "$@"
