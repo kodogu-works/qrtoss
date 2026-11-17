@@ -78,6 +78,12 @@ The common relay regression sends raw HTTP upgrades to check 12 invalid cases, i
 
 On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 162 tests and `npm run test:cloudflare` passed all 55 tests, including all 12 real Go CLI scenarios on each adapter. Both runtime type checks, lint, formatting, generated-definition checks, Cloudflare non-persistence checks and the production build passed. These are local checks; the staging and real-browser acceptance items remain pending.
 
+## WebSocket extension header review fix (7.6)
+
+Removed empty `Sec-WebSocket-Extensions` headers from the public Worker upgrade response, internal Worker-to-RoomDO upgrade request and RoomDO upgrade response. Compression remains disabled by the pinned `no_web_socket_compression` flag. TD04 offers `permessage-deflate` directly to workerd and now requires the response header to be `undefined`; an empty value fails. `check:cloudflare` also rejects extension header references in executable relay code, so workerd's removal of empty headers cannot conceal their reintroduction. The check rejected the previous bridge code and passed after removal. The specification and hosting instructions now describe the same policy.
+
+On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm run test:cloudflare` passed all 55 tests, including all 12 real Go CLI scenarios. Both runtime type checks, lint, formatting, Cloudflare non-persistence/deployment checks, the Web build and Wrangler's deployment dry run passed. No staging deployment or real-browser acceptance was performed for this fix; those remain the review 7.8 acceptance items.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

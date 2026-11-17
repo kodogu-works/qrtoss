@@ -105,7 +105,7 @@ export function bridge(
       if (!allowed) return reject('RATE_LIMITED', 1008);
       const stub = env.ROOM.get(env.ROOM.idFromName(auth.room));
       const pending = stub.fetch('https://room.internal/ws', {
-        headers: { Upgrade: 'websocket', 'X-Qrtoss-IP': ip, 'Sec-WebSocket-Extensions': '' },
+        headers: { Upgrade: 'websocket', 'X-Qrtoss-IP': ip },
       });
       // A timed-out upgrade can still finish; close it instead of leaking a connection.
       void pending.then(

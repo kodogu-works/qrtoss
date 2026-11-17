@@ -1757,7 +1757,7 @@ roomIdは最初の`auth`メッセージの中にあり、upgrade要求のURLと�
 
 1. Workerが、メソッド`GET`、パス`/ws`、Upgrade要求であること、Originの完全一致、subprotocolが`qrtoss.v1`の1件だけであること（第10.3節）を検査する。満たさない要求はupgradeしない。Originの不一致は403、subprotocolの不一致は400（`VERSION_UNSUPPORTED`）とし、接続枠を取得しない。
 2. WorkerがCapacityDOから未認証接続の枠と同一IPの接続枠を取得する（第15.6.7節）。取得できない場合はupgradeしない（503、または同一IPの上限超過では429）。同一IPの上限超過は、Node版では503（`CAPACITY`）、Cloudflare版では429（`RATE_LIMITED`、`Retry-After: 6`）となる。
-3. Workerが`WebSocketPair`で接続を受け入れ、`Sec-WebSocket-Protocol: qrtoss.v1`を付けて101を返す。permessage-deflateを無効にする。Cloudflareの現行compatibility dateではWebSocket圧縮が既定で有効なため、`no_web_socket_compression`フラグを指定し、101応答の`Sec-WebSocket-Extensions`も空にして交渉を拒否する。内部のWorker–RoomDO接続にも適用する。[S46]
+3. Workerが`WebSocketPair`で接続を受け入れ、`Sec-WebSocket-Protocol: qrtoss.v1`を付けて101を返す。Cloudflareの現行compatibility dateではWebSocket圧縮が既定で有効なため、`no_web_socket_compression`フラグでpermessage-deflateを無効にする。このフラグは内部のWorker–RoomDO接続にも適用する。WorkerとRoomDOの101応答、および内部upgrade要求には`Sec-WebSocket-Extensions`を付けない。空の値も送らず、ランタイムによるヘッダーの除去には依存しない。拡張ヘッダーを手動で指定するコードは静的検査で禁止する。[S46]
 4. Workerは、接続から`AUTH_TIMEOUT_SECONDS`以内の最初のメッセージが、テキストで、`MAX_CONTROL_MESSAGE_BYTES`以下で、共通の制御メッセージ検証関数で`auth`として妥当であることを確認する。時間切れ、`auth`以外、schema違反、バイナリは1008、過大なメッセージは1009で閉じ、RoomDOへ接続しない。
 5. WorkerはCapacityDOに対し、そのIPが認証失敗の連続で一時拒否中でないことを確認する。拒否中なら第15.3節と同じ扱いで閉じる。
 6. Workerは`idFromName(auth.room)`のRoomDOへ内部のWebSocket upgrade要求を送り（`stub.fetch()`）、得られたWebSocketを受け入れ、最初の`auth`メッセージをそのまま転送する。内部要求には第15.6.8節のクライアントIPを内部ヘッダーで付ける。
@@ -2350,7 +2350,7 @@ Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第
 | TD01 | `tests/relay`の統合試験を、対象をCloudflare版にして実行 | Node版と同じ結果になる |
 | TD02 | 相互運用試験（IX02、IX04、IX09を含む）をCloudflare版で実行 | Node版と同じ結果になる |
 | TD03 | receiverとsenderを別のネットワークから接続（検証用配備） | 同じRoomDOへ振り分けられ、ペアリング、送信、ackが成立する |
-| TD04 | `auth`以外の最初のメッセージ、5秒の時間切れ、バイナリ、過大なメッセージ、Origin不一致、subprotocolの未指定・空・不一致・複数・重複（複数のヘッダー行を含む） | 第10.3節どおりのclose codeまたはHTTPステータスで拒否し、RoomDOへ接続しない。不正なsubprotocolでは接続枠を消費しない。単一の`qrtoss.v1`（前後のSP・HTABを許可）は101と同名の選択ヘッダーを返す |
+| TD04 | `auth`以外の最初のメッセージ、5秒の時間切れ、バイナリ、過大なメッセージ、Origin不一致、subprotocolの未指定・空・不一致・複数・重複（複数のヘッダー行を含む）、`permessage-deflate`の提示 | 第10.3節どおりのclose codeまたはHTTPステータスで拒否し、RoomDOへ接続しない。不正なsubprotocolでは接続枠を消費しない。単一の`qrtoss.v1`（前後のSP・HTABを許可）は101と同名の選択ヘッダーを返す。圧縮を提示しても、workerd直結の101応答に`Sec-WebSocket-Extensions`が存在しない（空の値も不可） |
 | TD05 | 形式が正しく存在しないroomIdでの`auth`、閉じたroomへの`auth` | `PAIR_UNAVAILABLE`となり、認証失敗として数えられる。RoomDOに状態が残らない |
 | TD06 | 同じroomへの複数candidateの同時接続と、commitの競合 | `PEER_BUSY`とatomicなcommitがNode版と同じに動き、commitは1件だけ成立する |
 | TD07 | 片側の切断：クライアントの切断、RoomDO側からのclose、RoomDOへの内部接続の異常切断 | 相手側が第10.5節・第10.6節どおりの通知またはclose codeを受ける。1005・1006をクライアントへ送らない |
@@ -2450,7 +2450,7 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 | S43 | [Cloudflare: Workers performance and timers][S43] | `Date.now()`がI/Oまで進まないこと |
 | S44 | [Cloudflare: HTTP request headers][S44] | `CF-Connecting-IP` |
 | S45 | [Cloudflare: Workers Logs][S45] | Workers Logsの記録内容と無効化 |
-| S46 | [Cloudflare: Compatibility flags — WebSocket Compression][S46] | 現行日付では圧縮が既定で有効、無効化フラグと空の交渉ヘッダー |
+| S46 | [Cloudflare: Compatibility flags — WebSocket Compression][S46] | 現行日付では圧縮が既定で有効、無効化フラグの受信・送信接続への適用 |
 
 S37〜S45は1.1.0の改訂（2026-11-18）で追加し、Cloudflare版の実装時に公式文書のURLと内容を確認した。標準WebSocket API・休止時のメモリ消失・SQLite DOのプラン条件・時刻のI/O依存・ASSETS binding・Workers Logsの設定を確認済み。本番配備に依存する条件の検証状況は`docs/validation.md`に記載する。
 

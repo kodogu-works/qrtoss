@@ -161,7 +161,7 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 
 ### 7.2 確認した事項
 
-- 101応答に付けている空の`Sec-WebSocket-Extensions`ヘッダーについて確認した。ChromiumのWebSocket実装は、値が空の`Sec-WebSocket-Extensions`を受け取るとハンドシェイクを失敗させる。そこで、同梱のworkerd（`@cloudflare/workerd-linux-64`）に同じ応答を返すWorkerを置いて、実際の101応答を確認した。workerdはこのヘッダーを応答から除いており、ブラウザへは届かない。不具合ではない（7.6節を参照）。
+- レビュー時点で101応答に付けていた空の`Sec-WebSocket-Extensions`ヘッダーについて確認した。ChromiumのWebSocket実装は、値が空の`Sec-WebSocket-Extensions`を受け取るとハンドシェイクを失敗させる。そこで、同梱のworkerd（`@cloudflare/workerd-linux-64`）に同じ応答を返すWorkerを置いて、実際の101応答を確認した。その時点のworkerdはこのヘッダーを応答から除いており、ブラウザへは届いていなかった。今回、空のヘッダー自体を削除した（7.6節を参照）。
 - Node版とCloudflare版の共有試験は、`createTestRelay()`で接続先だけを切り替え、試験の内容は変えていない。Cloudflare版だけで試験を省略している箇所はない。
 
 ### 7.3 [解消] Workerが中継する送信の量に上限がない
@@ -195,9 +195,15 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 
 発生するのは更新（60秒ごと）と切断が重なったときだけで、影響は一時的である。対策するなら、返却したIDをCapacityDOが短時間（リースの期限まで）記録し、その後に届いた更新を無視する。
 
-### 7.6 [参考] 空の`Sec-WebSocket-Extensions`ヘッダーとTD04の判定
+### 7.6 [解消] 空の`Sec-WebSocket-Extensions`ヘッダーとTD04の判定
 
-7.2節のとおり、workerdは空の`Sec-WebSocket-Extensions`を101応答から除くため、現状では問題がない。しかし、この動作はランタイムの実装に依存しており、互換性フラグ`no_web_socket_compression`だけで圧縮は無効になる。Worker（[`index.ts:177`](../server/cloudflare/src/index.ts#L177)）とRoomDO（[`room.ts:108`](../server/cloudflare/src/room.ts#L108)）のこのヘッダーは削除してよい。また、TD04の判定`upgrade.headers['sec-websocket-extensions'] ?? ''`は、空の値が付いていても合格する。ブラウザが拒否する状態を検出できるよう、ヘッダーがないこと（`undefined`）を確認する判定に変えることを推奨する。
+レビュー時点では、WorkerとRoomDOの101応答、WorkerからRoomDOへの内部upgrade要求に、空の`Sec-WebSocket-Extensions`を付けていた。workerdが空のヘッダーを除く挙動に依存しており、TD04の`?? ''`を使った判定も、ヘッダーの欠落と空の値を区別できなかった。
+
+今回、[`index.ts`](../server/cloudflare/src/index.ts)・[`room.ts`](../server/cloudflare/src/room.ts)・[`bridge.ts`](../server/cloudflare/src/bridge.ts)の3か所からこのヘッダーを削除した。圧縮の無効化には互換性フラグ`no_web_socket_compression`を使う。TD04（[`runtime.integration.ts`](../tests/cloudflare/runtime.integration.ts)）はworkerdへ直接`permessage-deflate`を提示し、101応答のヘッダー値が厳密に`undefined`であることを確認する。空の値が付いていれば試験を失敗させる。
+
+[`check-cloudflare.mjs`](../scripts/check-cloudflare.mjs)には、実行コードで拡張ヘッダーを手動指定することを禁止する検査を追加した。これにより、workerdが空の値を除去しても、空ヘッダーの再導入をCIで検出できる。修正前のコードが`CLOUDFLARE_WEBSOCKET_EXTENSIONS`で失敗し、削除後に成功することも確認した。仕様15.6.4・TD04・S46と配備手順も同じ規定へ更新した。
+
+今回の7.6対応では、Node.js 26.13.1とGo 1.26.2で`npm run test:cloudflare`（55件）がすべて成功した。両runtimeの型検査、lint・整形、Cloudflareの静的検査、WebビルドとWranglerの配備なしパッケージ検査も成功した。検証用配備と実機ブラウザの確認は7.8節の未実施項目として残る。
 
 ### 7.7 [文書] 仕様と実装の対応
 
@@ -220,6 +226,6 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 | 1 | 7.3 Worker中継の送信量の上限（対応済み） | 累計送信量を送信前に制限し、`SLOW_PEER`で終了する。仕様15.6.4・15.6.5とTD16も更新した |
 | 2 | 7.8 検証用配備での試験とブラウザからの接続 | ローカルのworkerdでは、Cloudflareのエッジとゾーン設定の挙動を確認できない |
 | 3 | 7.4 subprotocolの受理条件（対応済み） | 共通の判定関数で単一の`qrtoss.v1`だけを受理し、両版の回帰試験と仕様を更新した |
-| 4 | 7.6 不要なヘッダーとTD04の判定 | ランタイムの挙動に依存しないようにする |
+| 4 | 7.6 不要なヘッダーとTD04の判定（対応済み） | 空ヘッダーを3か所から削除し、TD04で欠落を厳密に検査する。再導入は静的検査で拒否する |
 | 5 | 7.5 リースの更新と返却の順序 | 影響が一時的で、発生条件が限られる |
 | 6 | 7.7 仕様の記述 | 記録の正確さのため |

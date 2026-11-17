@@ -81,7 +81,7 @@ test('TD04: invalid first messages never reach RoomDO; compression is disabled',
     request.end();
   });
   assert.equal(upgrade.statusCode, 101);
-  assert.equal(upgrade.headers['sec-websocket-extensions'] ?? '', '');
+  assert.equal(upgrade.headers['sec-websocket-extensions'], undefined);
   for (const [payload, expected] of [
     [JSON.stringify({ v: 1, type: 'hb.ping', id: 0 }), 1008],
     [

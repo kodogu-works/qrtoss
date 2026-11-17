@@ -92,6 +92,9 @@ async function inspect(directory) {
     for (const name of forbidden)
       if (new RegExp('\\b' + name + '\\b').test(code))
         throw new Error('CLOUDFLARE_PERSISTENCE_OR_LOGGING: ' + path);
+    // Compression is controlled by compatibility flags, not extension headers.
+    if (/sec-websocket-extensions/i.test(code))
+      throw new Error('CLOUDFLARE_WEBSOCKET_EXTENSIONS: ' + path);
     if (/from\s*['"](?:node:|ws['"])/.test(code))
       throw new Error('CLOUDFLARE_PLATFORM_IMPORT: ' + path);
   }

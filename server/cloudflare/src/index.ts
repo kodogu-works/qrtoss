@@ -172,7 +172,6 @@ export function createWorker(clock: BridgeClock = realtime) {
               headers: {
                 ...responseHeaders(origin),
                 'Sec-WebSocket-Protocol': 'qrtoss.v1',
-                'Sec-WebSocket-Extensions': '',
               },
             });
           } catch {
