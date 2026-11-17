@@ -117,6 +117,21 @@ export default {
           env.CAPACITY.idFromName('global'),
         ) as unknown as DurableObjectStub<CapacityDO>;
       }
+      if (command.action === 'release-before-renew') {
+        const lateSocket = { ip: '127.0.0.1', authenticated: false };
+        await cap.acquireRoom('test-released-room', lateSocket.ip);
+        await cap.acquireSocket('test-released-socket', lateSocket.ip);
+        await cap.releaseRoom('test-released-room');
+        await cap.releaseSocket('test-released-socket');
+        // Deliver the old updates after release through another stub, as can
+        // happen when the entry Worker or RoomDO renews while closing.
+        const delayed = env.CAPACITY.get(
+          env.CAPACITY.idFromName('global'),
+        ) as unknown as DurableObjectStub<CapacityDO>;
+        await delayed.renewRoom('test-released-room');
+        await delayed.renewSocket('test-released-socket', lateSocket);
+        await delayed.authenticateSocket('test-released-socket');
+      }
       const stats = { rooms: 0, sockets: 0, upgrades: 0 };
       for (const id of rooms) {
         let room = env.ROOM.get(env.ROOM.idFromName(id)) as unknown as DurableObjectStub<RoomDO>;

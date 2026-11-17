@@ -329,6 +329,30 @@ test('TD10: room and authenticated socket leases recover within the 60-second re
   receiver.close();
 });
 
+test('TD10: delayed renewal after release does not consume capacity or per-IP socket slots', async (t) => {
+  const { relay, url, create } = await setup(t, {
+    publicOrigin: ORIGIN,
+    now: () => 0,
+    maxRooms: 1,
+    maxSockets: 1,
+    maxUnauthenticatedSockets: 1,
+    maxSocketsPerIp: 1,
+  });
+  const { capacity } = await relay.control('release-before-renew');
+  assert.equal(capacity.rooms, 0);
+  assert.equal(capacity.sockets, 0);
+  assert.equal(capacity.unauthenticated, 0);
+  const room = await create();
+  const receiver = await Peer.connect(url, 'receiver', room.room, room.receiverCap, ORIGIN);
+  t.after(() => receiver.close());
+  receiver.send({ type: 'hb.ping', id: 0 });
+  await receiver.next('hb.pong');
+  const current = (await relay.control()).capacity;
+  assert.equal(current.rooms, 1);
+  assert.equal(current.sockets, 1);
+  assert.equal(current.unauthenticated, 0);
+});
+
 test('TD12/TD13: origin enforcement, route boundaries, security headers and asset bytes match', async (t) => {
   const { relay } = await setup(t);
   const expected = responseHeaders(new URL(ORIGIN));

@@ -189,11 +189,15 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 
 今回の7.4対応では、Node.js 26.13.1とGo 1.26.2で`npm test`（162件）と`npm run test:cloudflare`（55件）がすべて成功した。両runtimeの型検査、lint・整形、生成物の整合性検査、Cloudflareの静的検査、本番buildも成功した。
 
-### 7.5 [低] リースの返却より後に更新が届くと、最大120秒数え続ける
+### 7.5 [解消] リースの返却より後に更新が届くと、最大120秒数え続ける
 
-ソケットのリースの更新（[`bridge.ts:40`](../server/cloudflare/src/bridge.ts#L40)）と返却（[`bridge.ts:57`](../server/cloudflare/src/bridge.ts#L57)）は、それぞれ`capacity(env)`で新しいstubを作り、完了を待たずに送る。DOの呼出しの順序は同じstubの中でしか保証されない。このため、更新と同時に接続が閉じると、返却の後に更新が届くことがある。[`renewSocket()`](../packages/relay-core/src/capacity.ts#L63)は無条件に登録し直すので、閉じた接続が最大120秒、総数とIPごとの数に残る。roomのリース（[`room.ts:46`](../server/cloudflare/src/room.ts#L46)と[`room.ts:28`](../server/cloudflare/src/room.ts#L28)）も同じである。
+レビュー時点では、更新と返却を別のstubから完了を待たずに送るため、返却後に遅れた更新が届くことがあった。CapacityDOは更新時にリースを無条件で登録し直していたため、閉じたroom・接続が最大120秒、総数や同一IPの接続数に残る可能性があった。
 
-発生するのは更新（60秒ごと）と切断が重なったときだけで、影響は一時的である。対策するなら、返却したIDをCapacityDOが短時間（リースの期限まで）記録し、その後に届いた更新を無視する。
+今回、[`CapacityState`](../packages/relay-core/src/capacity.ts)が返却済みIDをroom・ソケット別に120秒間メモリへ記録するようにした。対象が見つからない返却も記録し、記録中のIDへの更新を無視して同じIDの再取得を拒否する。返却記録は有効な件数・同一IPの接続数には含めず、IDと削除期限だけを保持する。保持中の記録への遅延更新・重複返却で期限を延ばさず、期限切れの記録を次の処理で削除する。CapacityDO再起動後の既存リースの再登録は維持する。
+
+[`capacity.test.ts`](../tests/core/capacity.test.ts)では、登録の有無、認証状態、更新・返却の両順序の8組合せと、新しいIDの受付、120秒の境界での記録削除、roomとソケットのIDの独立性を確認する。TD10（[`runtime.integration.ts`](../tests/cloudflare/runtime.integration.ts)）はworkerd上で別のstubから返却後に更新を届け、件数が復活せず、上限1件のroom・ソケット・同一IP枠でも新規認証とheartbeatが成功することを確認する。この順序を作る制御RPCは試験用エントリポイントだけにある。修正前はroom数が1へ復活して追加試験が失敗することを再現した。仕様15.6.2・15.6.7・TD10と配備手順にも返却記録の扱いを追記した。
+
+今回の7.5対応では、Node.js 26.13.1とGo 1.26.2で`npm test`（165件）と`npm run test:cloudflare`（56件）がすべて成功した。両runtimeの型検査、lint・整形、生成物の整合性検査、Cloudflareの静的検査・非保存試験、WebビルドとWranglerの配備なしパッケージ検査も成功した。
 
 ### 7.6 [解消] 空の`Sec-WebSocket-Extensions`ヘッダーとTD04の判定
 
@@ -227,5 +231,5 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 | 2 | 7.8 検証用配備での試験とブラウザからの接続 | ローカルのworkerdでは、Cloudflareのエッジとゾーン設定の挙動を確認できない |
 | 3 | 7.4 subprotocolの受理条件（対応済み） | 共通の判定関数で単一の`qrtoss.v1`だけを受理し、両版の回帰試験と仕様を更新した |
 | 4 | 7.6 不要なヘッダーとTD04の判定（対応済み） | 空ヘッダーを3か所から削除し、TD04で欠落を厳密に検査する。再導入は静的検査で拒否する |
-| 5 | 7.5 リースの更新と返却の順序 | 影響が一時的で、発生条件が限られる |
+| 5 | 7.5 リースの更新と返却の順序（対応済み） | 返却済みIDへの遅延更新を120秒間無視し、件数の復活を防ぐ。期限・再起動回復とworkerdでの順序逆転を検証する |
 | 6 | 7.7 仕様の記述 | 記録の正確さのため |

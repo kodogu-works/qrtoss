@@ -12,6 +12,7 @@ import {
 } from 'miniflare';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RelayOptions } from '../../server/src/index.ts';
+import type { CapacityState } from '../../packages/relay-core/src/capacity.ts';
 
 let bundle: Promise<string> | undefined;
 function testBundle() {
@@ -89,7 +90,18 @@ export async function createCloudflareRelay(
   let stopped = false;
   async function control(action?: string) {
     if (stopped)
-      return { rooms: 0, sockets: 0, capacity: { rooms: 0, sockets: 0, unauthenticated: 0 } };
+      return {
+        rooms: 0,
+        sockets: 0,
+        capacity: {
+          rooms: 0,
+          sockets: 0,
+          unauthenticated: 0,
+          releasedRooms: 0,
+          releasedSockets: 0,
+          ips: 0,
+        },
+      };
     const response = await mf.dispatchFetch('https://test.internal/control', {
       method: 'POST',
       body: JSON.stringify({ now: options.now?.(), wall: options.wallNow?.(), action }),
@@ -97,7 +109,7 @@ export async function createCloudflareRelay(
     return (await response.json()) as {
       rooms: number;
       sockets: number;
-      capacity: { rooms: number; sockets: number; unauthenticated: number };
+      capacity: ReturnType<CapacityState['stats']>;
     };
   }
   const server = createServer((req, res) => {

@@ -84,6 +84,14 @@ Removed empty `Sec-WebSocket-Extensions` headers from the public Worker upgrade 
 
 On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm run test:cloudflare` passed all 55 tests, including all 12 real Go CLI scenarios. Both runtime type checks, lint, formatting, Cloudflare non-persistence/deployment checks, the Web build and Wrangler's deployment dry run passed. No staging deployment or real-browser acceptance was performed for this fix; those remain the review 7.8 acceptance items.
 
+## Capacity lease release ordering review fix (7.5)
+
+CapacityState records released room and socket IDs separately in memory for 120 seconds. It ignores renewals and rejects reacquisition of a recorded ID, including when release arrives before the lease is registered. Release immediately frees the active lease; release records contain only IDs and expiry times and do not count toward room, socket, unauthenticated or per-IP capacity. Late renewals and duplicate releases do not extend an existing record's expiry. Subsequent operations collect expired records, and CapacityDO restart discards them along with other volatile state. Existing lease recovery after restart still bypasses admission caps.
+
+Core regressions cover both release/update orders, previously registered and unknown leases, both socket authentication states, fresh admission, the 120-second expiry boundary, duplicate releases and independent room/socket ID namespaces. TD10 delivers room/socket renewal RPCs through another stub after release in real local workerd. Counts remain zero, and fresh room creation, receiver authentication and heartbeat succeed with room, socket, unauthenticated and per-IP limits set to one. Before the fix, the room count returned to one and the new test failed. The ordering control RPC exists only in the test entry point.
+
+On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 165 tests and `npm run test:cloudflare` passed all 56 tests, including all 12 real Go CLI scenarios on each adapter and the existing CapacityDO restart/recovery and non-persistence tests. Both runtime type checks, lint, formatting, generated-definition checks, Cloudflare static checks, the Web build and Wrangler's deployment dry run passed. No staging deployment or real-device acceptance was performed.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

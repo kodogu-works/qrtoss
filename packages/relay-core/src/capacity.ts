@@ -17,6 +17,8 @@ export type SocketLease = { ip: string; authenticated: boolean };
 export class CapacityState {
   private readonly rooms = new Map<string, number>();
   private readonly sockets = new Map<string, SocketLease & { expires: number }>();
+  private readonly releasedRooms = new Map<string, number>();
+  private readonly releasedSockets = new Map<string, number>();
   private readonly ips = new IpLimits();
 
   constructor(
@@ -28,7 +30,7 @@ export class CapacityState {
     this.sweep();
     if (!take(this.ips.record(ip, this.now()).create, this.now(), 10 / 60, 5))
       return { ok: false, status: 429, code: 'RATE_LIMITED', retryAfter: 6 };
-    if (this.rooms.size >= this.limits.maxRooms)
+    if (this.releasedRooms.has(id) || this.rooms.size >= this.limits.maxRooms)
       return { ok: false, status: 503, code: 'CAPACITY' };
     this.renewRoom(id);
     return { ok: true };
@@ -36,10 +38,15 @@ export class CapacityState {
 
   renewRoom(id: string) {
     this.sweep();
+    if (this.releasedRooms.has(id)) return;
     this.rooms.set(id, this.now() + LEASE_TTL_MS);
   }
   releaseRoom(id: string) {
+    this.sweep();
     this.rooms.delete(id);
+    // Remember even an unknown ID: release can precede recovery after a restart.
+    // Duplicate releases do not extend an existing guard.
+    if (!this.releasedRooms.has(id)) this.releasedRooms.set(id, this.now() + LEASE_TTL_MS);
   }
 
   acquireSocket(id: string, ip: string): Admission {
@@ -53,6 +60,7 @@ export class CapacityState {
     if (perIp >= this.limits.maxSocketsPerIp)
       return { ok: false, status: 429, code: 'RATE_LIMITED', retryAfter: 6 };
     if (
+      this.releasedSockets.has(id) ||
       this.sockets.size >= this.limits.maxSockets ||
       unauthenticated >= this.limits.maxUnauthenticatedSockets
     )
@@ -62,6 +70,7 @@ export class CapacityState {
   }
   renewSocket(id: string, lease: SocketLease) {
     this.sweep();
+    if (this.releasedSockets.has(id)) return;
     this.sockets.set(id, { ...lease, expires: this.now() + LEASE_TTL_MS });
   }
   authenticateSocket(id: string) {
@@ -69,7 +78,9 @@ export class CapacityState {
     if (lease) lease.authenticated = true;
   }
   releaseSocket(id: string) {
+    this.sweep();
     this.sockets.delete(id);
+    if (!this.releasedSockets.has(id)) this.releasedSockets.set(id, this.now() + LEASE_TTL_MS);
   }
   canAuthenticate(ip: string) {
     return this.ips.canAuthenticate(ip, this.now());
@@ -82,6 +93,8 @@ export class CapacityState {
     const now = this.now();
     for (const [id, expires] of this.rooms) if (expires <= now) this.rooms.delete(id);
     for (const [id, lease] of this.sockets) if (lease.expires <= now) this.sockets.delete(id);
+    for (const released of [this.releasedRooms, this.releasedSockets])
+      for (const [id, expires] of released) if (expires <= now) released.delete(id);
     this.ips.sweep(now);
   }
   stats() {
@@ -90,6 +103,8 @@ export class CapacityState {
       rooms: this.rooms.size,
       sockets: this.sockets.size,
       unauthenticated: [...this.sockets.values()].filter((lease) => !lease.authenticated).length,
+      releasedRooms: this.releasedRooms.size,
+      releasedSockets: this.releasedSockets.size,
       ips: this.ips.size,
     };
   }

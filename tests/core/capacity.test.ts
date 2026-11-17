@@ -49,6 +49,76 @@ test('leases expire at 120 seconds and renewal after restart ignores admission c
   assert.equal(restarted.acquireSocket('new', 'ip2').ok, false);
 });
 
+test('released room and socket leases ignore reordered renewals and cannot be reacquired', () => {
+  for (const authenticated of [false, true]) {
+    for (const registered of [false, true]) {
+      for (const releaseFirst of [false, true]) {
+        const state = new CapacityState(limits, () => 0);
+        if (registered) {
+          assert.equal(state.acquireRoom('room', 'ip').ok, true);
+          assert.equal(state.acquireSocket('socket', 'ip').ok, true);
+        }
+        const renew = () => {
+          state.renewRoom('room');
+          state.renewSocket('socket', { ip: 'ip', authenticated });
+        };
+        const release = () => {
+          state.releaseRoom('room');
+          state.releaseSocket('socket');
+        };
+        if (releaseFirst) {
+          release();
+          renew();
+        } else {
+          renew();
+          release();
+        }
+        state.authenticateSocket('socket');
+        assert.equal(state.stats().rooms, 0);
+        assert.equal(state.stats().sockets, 0);
+        assert.equal(state.stats().unauthenticated, 0);
+        assert.equal(state.acquireRoom('room', 'ip').ok, false);
+        assert.equal(state.acquireSocket('socket', 'ip').ok, false);
+        assert.equal(state.acquireRoom('new-room', 'ip').ok, true);
+        assert.equal(state.acquireSocket('new-socket', 'ip').ok, true);
+      }
+    }
+  }
+});
+
+test('release guards expire at 120 seconds without renewal or duplicate release extending them', () => {
+  let clock = 10_000;
+  const state = new CapacityState(limits, () => clock);
+  state.acquireRoom('room', 'ip');
+  state.acquireSocket('socket', 'ip');
+  clock += 10_000;
+  state.releaseRoom('room');
+  state.releaseSocket('socket');
+  clock += LEASE_TTL_MS - 1;
+  state.renewRoom('room');
+  state.renewSocket('socket', { ip: 'ip', authenticated: false });
+  state.releaseRoom('room');
+  state.releaseSocket('socket');
+  assert.equal(state.stats().rooms, 0);
+  assert.equal(state.stats().sockets, 0);
+  assert.equal(state.stats().releasedRooms, 1);
+  assert.equal(state.stats().releasedSockets, 1);
+  clock++;
+  assert.equal(state.stats().releasedRooms, 0);
+  assert.equal(state.stats().releasedSockets, 0);
+});
+
+test('room and socket release guards use separate ID namespaces', () => {
+  const roomReleased = new CapacityState(limits, () => 0);
+  roomReleased.releaseRoom('shared-id');
+  roomReleased.renewSocket('shared-id', { ip: 'ip', authenticated: true });
+  assert.equal(roomReleased.stats().sockets, 1);
+  const socketReleased = new CapacityState(limits, () => 0);
+  socketReleased.releaseSocket('shared-id');
+  socketReleased.renewRoom('shared-id');
+  assert.equal(socketReleased.stats().rooms, 1);
+});
+
 test('creation and authentication token buckets recover with time and are bounded by LRU', () => {
   let clock = 0;
   const state = new CapacityState({ ...limits, maxRooms: 100 }, () => clock);
