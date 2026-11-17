@@ -15,8 +15,9 @@ import (
 )
 
 type receiverTestSocket struct {
-	messages []map[string]json.RawMessage
-	writeErr error
+	messages   []map[string]json.RawMessage
+	writeErr   error
+	writeCalls int
 }
 
 func (*receiverTestSocket) Read(context.Context) (websocket.MessageType, []byte, error) {
@@ -24,6 +25,7 @@ func (*receiverTestSocket) Read(context.Context) (websocket.MessageType, []byte,
 }
 
 func (c *receiverTestSocket) Write(ctx context.Context, _ websocket.MessageType, b []byte) error {
+	c.writeCalls++
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -290,6 +292,60 @@ func TestReceiverOwnIdleExpiry(t *testing.T) {
 	}
 	if f.socket.count("room.close") != 1 || str(f.socket.messages[len(f.socket.messages)-1], "reason") != "idle_timeout" {
 		t.Fatal("local inactivity must close the room with idle_timeout")
+	}
+}
+
+func TestReceiverCloseRoomDuringCleanup(t *testing.T) {
+	for _, ending := range []struct {
+		name, reason, key string
+		code              int
+		end               func(*receiverFixture) *receiveResult
+	}{
+		{"command timeout", "user_end", "TIMEOUT", 124, func(f *receiverFixture) *receiveResult {
+			now := time.Now()
+			f.session.deadline = now
+			return f.session.onTick(now)
+		}},
+		{"protocol violation", "client_error", "PROTOCOL_ERROR", 4, func(f *receiverFixture) *receiveResult {
+			return f.session.onControl([]byte(`{"v":1,"type":"unexpected"}`))
+		}},
+		{"idle timeout", "idle_timeout", "SESSION_EXPIRED", 3, func(f *receiverFixture) *receiveResult {
+			now := f.session.connection().activity.last.Add(30 * time.Minute)
+			f.session.lastPong = now
+			return f.session.onTick(now)
+		}},
+	} {
+		for _, writeErr := range []error{nil, io.ErrClosedPipe} {
+			name := "write succeeds"
+			if writeErr != nil {
+				name = "write fails"
+			}
+			t.Run(ending.name+"/"+name, func(t *testing.T) {
+				f := newReceiverFixture(t, io.Discard)
+				f.advance("connected")
+				f.socket.writeCalls, f.socket.writeErr = 0, writeErr
+				result := func() *receiveResult {
+					// receive() always performs this cleanup after its event loop exits.
+					defer f.session.closeRoom("user_end")
+					return ending.end(f)
+				}()
+				expectReceiveFailure(t, result, ending.code)
+				if result.err.Error() != ending.key {
+					t.Fatalf("cleanup changed termination reason: %+v", result)
+				}
+				if f.socket.writeCalls != 1 {
+					t.Fatalf("termination and cleanup must attempt one write, got %d", f.socket.writeCalls)
+				}
+				if writeErr == nil {
+					if f.socket.count("room.close") != 1 {
+						t.Fatalf("expected one room.close, got %+v", f.socket.messages)
+					}
+					if reason := str(f.socket.messages[0], "reason"); reason != ending.reason {
+						t.Fatalf("cleanup changed room.close reason: got %s, want %s", reason, ending.reason)
+					}
+				}
+			})
+		}
 	}
 }
 

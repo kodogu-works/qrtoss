@@ -44,6 +44,10 @@ All 28 Chromium and Firefox E2E cases passed across the root and `/qrtoss/` depl
 
 CI checks Go formatting and runs Staticcheck v0.8.2 before Node and browser tests. With Go 1.26.2 locally, both added CI scripts, `go test -race -count=1 ./...` and `go vet ./...` passed. The workflow YAML and added shell scripts also passed syntax checks. Isolated fixtures confirmed that formatted, lint-clean Go passes, while unformatted files, parse errors and unused code fail the corresponding checks. Three unchecked `Seal()` errors in the crypto tests were fixed after Staticcheck reported them.
 
+## CLI room close cleanup verification
+
+The CLI attempts `room.close` once per receiver session, including when the write fails, and retains the original termination reason. Six regression cases cover command timeout, protocol violation and local idle expiry, each with successful and failed writes followed by deferred cleanup. All Go race tests, Go vet, formatting checks, Staticcheck v0.8.2 and the 12 real Go CLI interoperability tests passed.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

@@ -18,11 +18,12 @@
 
 上記対象コミットでは、初回レビューの指摘は1件を除いて適切に対応されていた。仕様違反だった3.1（期限競合）と、公開前に必要だった3.2（IPv6のレート制限）は、仕様の更新と回帰試験を含めて解消した。修正内容に新たなセキュリティ上の問題は見つからなかった。
 
-以下の対応状況には、CLI状態型・ready期限とidle期限・GoのCI検査の修正を追記した。
+以下の対応状況には、CLI状態型・ready期限とidle期限・GoのCI検査・終了処理の修正を追記した。
 
 1. **対応済み**：CLIの`receive()`を段階ごとの明示的な状態型へ再構成し、接続準備・ペアリング・メッセージ処理・出力完了処理を分割した（初回2.2、優先順位4）。
 2. **対応済み**：CLIもready期限・idle期限の失効をサーバーの通知で確定するようにし、通知遅延による誤切断を解消した。無操作による終了では`SESSION_EXPIRED`を表示する（3.1節）。
-3. **対応済み（今回）**：Goの整形検査と版を固定したStaticcheckをCIに追加した。導入時に見つかった暗号テストの未確認エラー3件も修正した（3.2節）。
+3. **対応済み**：Goの整形検査と版を固定したStaticcheckをCIに追加した。導入時に見つかった暗号テストの未確認エラー3件も修正した（3.2節）。
+4. **対応済み（今回）**：CLIの`room.close`は受信セッションごとに1回だけ送信を試行するようにし、終了処理と`defer`による二重送信を解消した（3.3節）。
 
 ## 2. 前回指摘の確認結果
 
@@ -49,12 +50,12 @@ CLIには、ローカルのready期限・idle期限だけで切断し、期限�
 
 今回、次のように修正した。
 
-- [`onTick()`](../cli/internal/client/receiver.go#L148)から、サーバーが通知したready期限・idle期限へのローカル到達による切断を削除した。失効は`room.closed`（`READY_TIMEOUT`・`SESSION_EXPIRED`）で確定し、Web（[`session.ts`](../web/src/session.ts)）と方針をそろえた。
+- [`onTick()`](../cli/internal/client/receiver.go#L150)から、サーバーが通知したready期限・idle期限へのローカル到達による切断を削除した。失効は`room.closed`（`READY_TIMEOUT`・`SESSION_EXPIRED`）で確定し、Web（[`session.ts`](../web/src/session.ts)）と方針をそろえた。
 - `receiverConfirming`・`receiverActivating`の期限フィールド、`pair.confirm`・`pair.active`のready期限による送信打ち切り、期限後に届いた`ready`を違反とする判定を削除した。暗号化メッセージの順序とseqの検証は引き続き行う。
 - `idleExpiresAt`は緊急touchの送信時期にだけ使う。受信側自身の最終活動から30分で`idle_timeout`により終了する判定は維持した。
 - `SESSION_EXPIRED`による終了では同名の診断を表示してQRを更新する。`READY_TIMEOUT`は仕様どおり`DISCONNECTED`として回復する。サーバーが応答しない場合のheartbeat（45秒）と、利用者が指定した`--timeout`の判定も維持した。
 
-仕様4.4・11.3にも、サーバーの期限判定と通知遅延の扱いを明記した。[`receiver_test.go`](../cli/internal/client/receiver_test.go#L206)と実Go CLIの相互運用試験（[`cli.test.ts:482`](../tests/interop/cli.test.ts#L482)、`:501`）で、通知遅延中の通信継続・終了理由・QR更新・ローカルの終了条件を検証した。
+仕様4.4・11.3にも、サーバーの期限判定と通知遅延の扱いを明記した。[`receiver_test.go`](../cli/internal/client/receiver_test.go#L208)と実Go CLIの相互運用試験（[`cli.test.ts:482`](../tests/interop/cli.test.ts#L482)、`:501`）で、通知遅延中の通信継続・終了理由・QR更新・ローカルの終了条件を検証した。
 
 ### 3.2 [解消] Goの整形・lintのCI検査
 
@@ -65,9 +66,13 @@ Goの整形・lintをCIで検査していなかったため、[`.github/workflow
 
 導入時にStaticcheckが検出した`SA4006`は、[`client_test.go`](../cli/internal/client/client_test.go#L153)で`Seal()`のエラーを次の復号結果で上書きしていた3件だった。各箇所で暗号化のエラーを確認するように修正した。[`CONTRIBUTING.md`](../CONTRIBUTING.md)に同じ固定版での実行手順を追加し、仕様17.3・18.6と[`docs/validation.md`](validation.md)の検査項目も更新した。
 
-### 3.3 [情報] 終了時の`room.close`の二重送信
+### 3.3 [解消] 終了時の`room.close`の二重送信
 
-[`violation()`](../cli/internal/client/receiver.go)の`closeRoom("client_error")`と、自己の最終活動からの無操作期限による`closeRoom("idle_timeout")`の後に、`receive()`の`defer`で`closeRoom("user_end")`がもう一度送られる。サーバーは最初の通知でroomを閉じるため、実害はない。ただし、終了時に最大100msの書き込み待ちが加わることがある。送信済みのフラグで2回目を省くと、意図が明確になる。
+プロトコル違反の`closeRoom("client_error")`と、自己の最終活動からの無操作期限による`closeRoom("idle_timeout")`の後に、`receive()`の`defer`で`closeRoom("user_end")`をもう一度試行していた。サーバーは最初の通知でroomを閉じるものの、終了時に最大100msの書き込み待ちが加わる可能性があった。
+
+[`closeRoom()`](../cli/internal/client/receiver.go#L323)に受信セッション単位の`closeAttempted`フラグを追加し、最初の送信試行より前に記録するようにした。これにより、終了処理と`defer`の両方から呼ばれても送信の試行は1回で、`client_error`・`idle_timeout`の理由を維持する。最初の書き込みが失敗した場合も追加の試行を行わず、2回目の待ち時間を加えない。通常の後処理では`user_end`を1回試行する。
+
+[`TestReceiverCloseRoomDuringCleanup`](../cli/internal/client/receiver_test.go#L298)は、受信待機期限・プロトコル違反・無操作期限の3経路と、書き込み成功・失敗の組合せ6ケースを検証する。試行回数、送信した終了理由、終了コードと診断キーを確認し、修正前の二重送信も再現した。
 
 ## 4. 試験について
 
@@ -76,6 +81,7 @@ Goの整形・lintをCIで検査していなかったため、[`.github/workflow
 - 上記対象コミットのレビューではGoの試験・相互運用試験・E2Eを実行していない。今回の2.2対応では、`go test -race ./...`・`go vet ./...`と実Go CLIの相互運用試験9件が成功した。追加した[`receiver_test.go`](../cli/internal/client/receiver_test.go)は、ハンドシェイクの順序、出力中の切断・書き込み失敗、重複受信、ACK待ちの期限と終了コードを検証する。
 - 今回の3.1対応では、`go test -race -count=1 ./...`・`go vet ./...`、実Go CLIの相互運用試験12件、`tsc --noEmit`、変更したTSファイルのBiome lint・format検査がすべて成功した。
 - 今回の3.2対応では、Go 1.26.2とStaticcheck v0.8.2で、追加したCIステップ・`go test -race -count=1 ./...`・`go vet ./...`がすべて成功した。ワークフローYAMLの読み込みと追加ステップのシェル構文も確認した。一時的なGoモジュールで、整形済み・lint指摘なしのコードは成功し、未整形・構文エラー・未使用コードではそれぞれ検査が失敗することを確認した。
+- 今回の3.3対応では、`go test -race -count=1 ./...`・`go vet ./...`・`gofmt`の整形検査・Staticcheck v0.8.2と、実Go CLIの相互運用試験12件がすべて成功した。追加した後処理の回帰試験6ケースも成功した。
 - [`docs/validation.md`](validation.md)のとおり、実機（iOS SafariのWorker経路を含む）、実HTTPS配備、WebKitでのE2Eは引き続き公開前の必須項目である。
 
 ## 5. 対応の優先順位
@@ -84,5 +90,5 @@ Goの整形・lintをCIで検査していなかったため、[`.github/workflow
 | ---: | --- | --- |
 | 1 | 2.2 CLI `receive()`の明示的な状態型への再構成（対応済み） | 段階ごとの状態型により、不正な状態の組合せを排除した |
 | 2 | 3.1 ready期限・idle期限のローカル切断の見直し（対応済み） | 通知遅延による誤切断を防ぎ、終了理由をWebの方針と仕様に合わせた |
-| 3 | 3.2 Goの整形・lintのCI検査（今回対応済み） | 整形と静的解析の指摘をCIで検出し、外部レビューのコストを削減する |
-| 4 | 3.3 `room.close`の二重送信 | 動作上の影響はほぼない |
+| 3 | 3.2 Goの整形・lintのCI検査（対応済み） | 整形と静的解析の指摘をCIで検出し、外部レビューのコストを削減する |
+| 4 | 3.3 `room.close`の二重送信（今回対応済み） | 終了通知の試行を1回に抑え、最初の終了理由を維持する |

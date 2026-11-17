@@ -33,6 +33,8 @@ type receiver struct {
 	lastPong    time.Time
 	pingID      int64
 	lastPongID  int64
+
+	closeAttempted bool
 }
 
 type wireRead struct {
@@ -319,6 +321,12 @@ func (s *receiver) write(v any, until time.Time) error {
 }
 
 func (s *receiver) closeRoom(reason string) {
+	// The event loop and its deferred cleanup share one best-effort attempt,
+	// even when writing fails, so cleanup cannot replace the original reason.
+	if s.closeAttempted {
+		return
+	}
+	s.closeAttempted = true
 	end := time.Now().Add(100 * time.Millisecond)
 	if drain := s.drainDeadline(); !drain.IsZero() && drain.Before(end) {
 		end = drain
