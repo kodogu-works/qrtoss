@@ -75,7 +75,9 @@ async function fakeCamera(page:Page,payload:string){
     // Exercise the decoder Worker, including its lazy-loaded production chunk.
     Object.defineProperty(window,'BarcodeDetector',{value:{getSupportedFormats:async()=>[]},configurable:true});
     const fixture=window as unknown as {qrCameraTracks:MediaStreamTrack[]};fixture.qrCameraTracks=[];
-    Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{
+    // WebKit can collect and recreate the mediaDevices wrapper, losing own properties.
+    // Keep the camera override on the prototype so it survives garbage collection.
+    Object.defineProperty(MediaDevices.prototype,'getUserMedia',{configurable:true,value:async()=>{
       const img=new Image();img.src=data;await img.decode();const c=document.createElement('canvas');c.width=c.height=512;
       const draw=()=>{const ctx=c.getContext('2d')!;ctx.fillStyle='white';ctx.fillRect(0,0,512,512);ctx.drawImage(img,106,106,300,300);};draw();
       const stream=c.captureStream(15),timer=setInterval(()=>{if(stream.getTracks().every(track=>track.readyState==='ended'))clearInterval(timer);else draw();},66);
@@ -88,9 +90,10 @@ async function scanQR(page:Page,text:string){
   await page.bringToFront();
   // The app stops scanning in hidden documents; wait for the sender to be visible.
   await expect.poll(()=>page.evaluate(()=>document.visibilityState)).toBe('visible');
+  // Exercise the camera fixture after WebKit has had a chance to collect DOM wrappers.
+  await page.requestGC();
   await page.locator('#scan').click();
-  // Includes media playback startup and the production decoder Worker's cold load.
-  await expect(page.locator('#sender-text')).toHaveText(text,{timeout:15000});
+  await expect(page.locator('#sender-text')).toHaveText(text);
 }
 async function pages(browser:Browser,payload:string){
   const rc=await browser.newContext({locale:'en-US'}),sc=await browser.newContext({locale:'en-US'});
