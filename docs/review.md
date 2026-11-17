@@ -10,6 +10,7 @@
 | 実行した検査 | `biome lint`・`biome format`・`tsc --noEmit`・`generate-protocol --check`はすべて成功。`tests/{protocol,relay,web}`は140件中137件成功（下記） |
 | 未実施 | Go CLIの試験・`go vet`・TSとGoの相互運用試験（レビュー環境にGoがない）、Playwright E2E、実機・実配備での確認 |
 | 追加の再レビュー | `469537e..c3ef4a5`（`0e04e67`・`72c847f`・`3fe6ac7`・`c3ef4a5`、15ファイル、+1,709／−676行）。2026-11-18実施。コードと試験の読み合わせのみで、Goの試験・Staticcheck・相互運用試験とCIの結果は確認していない（レビュー環境にGoと`gh`がない）。結果は6節 |
+| Cloudflare版のレビュー | `c3ef4a5..9eca609`（feat: add Cloudflare Durable Objects relay、43ファイル、+3,991／−623行）。2026-11-18実施。結果は7節 |
 
 失敗した3件（`tests/protocol/crypto.test.ts`）は、レビュー環境のNode.js 18にグローバル`crypto`と`String.prototype.isWellFormed`がないことが原因である。プロジェクトはNode.js 26以上を要求している（`engines`、CI）ため、コードの不具合ではない。中継サーバーとIP制限の試験はすべて成功した。
 
@@ -137,3 +138,84 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 | 2 | 6.5 CIの成功の確認 | 検証時のGoの版がCIと異なる |
 | 3 | 6.3 `pair.proof`の受理状態 | 実害はないが、状態型による不正状態の排除を徹底できる |
 | 4 | 6.4 本書冒頭の対象範囲 | 記録の正確さのため |
+
+## 7. Cloudflare版のレビュー（`c3ef4a5..9eca609`）
+
+対象は、Cloudflare WorkersとDurable Objects（DO）を使う中継サーバーの追加と、room処理の共有モジュールへの分離である。主に次のファイルを読んだ：[`packages/relay-core/src/`](../packages/relay-core/src/)、[`server/cloudflare/src/`](../server/cloudflare/src/)、[`server/src/index.ts`](../server/src/index.ts)、[`wrangler.jsonc`](../wrangler.jsonc)、[`scripts/check-cloudflare.mjs`](../scripts/check-cloudflare.mjs)、[`tests/cloudflare/`](../tests/cloudflare/)、[`tests/core/`](../tests/core/)。これらを仕様15.6節・16.10節・18.7節と突き合わせた。
+
+### 7.1 総評
+
+仕様15.6節の構成（Worker・RoomDO・CapacityDO）、最初の`auth`による振り分け、ストレージを使わないことは、仕様どおり実装されている。room処理は[`createRelayCore()`](../packages/relay-core/src/index.ts#L60)へ分離され、Node版もこのモジュールを使う。両版の状態遷移が分かれていない点は評価できる。仕様違反や、公開の妨げになる不具合は見つからなかった。Worker中継の送信バッファに上限がなかった点（7.3節）は今回、累計送信量の上限と回帰試験を追加して解消した。
+
+| 仕様 | 判定 | 確認内容 |
+| --- | --- | --- |
+| 15.6.3 room作成 | 適合 | Workerがcapabilityを生成し、RoomDOにはSHA-256だけを渡す（[`index.ts:121-126`](../server/cloudflare/src/index.ts#L121-L126)）。CapacityDOの枠は、RoomDOの呼出しが失敗したとき、または期限内に応答がないときに返却する |
+| 15.6.4 `/ws`の振り分け | 適合 | [`bridge()`](../server/cloudflare/src/bridge.ts#L20)は、最初のメッセージが`auth`として正しいことを確かめてからRoomDOへ接続する。`connecting`中に届いたメッセージは溜めずに拒否する。認証前の時間切れ・バイナリ・過大メッセージ・schema違反では、RoomDOへ接続しない（TD04で試験） |
+| 15.6.5 atomicな処理 | 適合 | [`auth()`](../packages/relay-core/src/index.ts#L211)はハッシュ計算と照合の`await`を先に済ませ、その後は`await`を挟まずに状態を確認・変更する。`room`と`hash`が待機の前後で同じことも確認する。`pair.commit`は同期処理である |
+| 15.6.5 Hibernationを使わないこと | 適合 | `accept()`だけを使う。`acceptWebSocket`・`serializeAttachment`・Alarmは静的検査で禁止している |
+| 15.6.5 close処理 | 適合 | [`closeSocket()`](../server/cloudflare/src/runtime.ts#L36)は1005・1006等をclose codeとして送らず、1011に置き換える。互換性日付`2026-11-17`では`web_socket_auto_reply_to_close`（既定の有効化日2026-04-07）が有効になり、相手からのcloseに自動で応答する。このことはworkerdのバイナリで確認した |
+| 15.6.6 非保存 | 適合（ローカル） | [`check-cloudflare.mjs`](../scripts/check-cloudflare.mjs)が、ストレージ・Alarm・attachment・cache・`console`への参照と、許可していない設定キーを禁止する。CIで実行している。TD11は、永続化ディレクトリのSQLiteの全テーブルが空であることと、秘密値がファイルにないことを確認する。本番のストレージ使用量は未確認（仕様どおり手動確認の項目） |
+| 15.6.7 上限 | 適合 | [`CapacityState`](../packages/relay-core/src/capacity.ts#L17)は、リース（期限120秒、更新60秒ごと）、更新時の再登録（上限を超えていても行う）、IPごとの上限を実装している。CapacityDOに失敗したとき、または期限内に応答がないときは新規受付を503で拒否し、既存の接続は維持する（TD10） |
+| 15.6.8 クライアントIP | 適合 | `CF-Connecting-IP`だけを使い、`X-Forwarded-For`は使わない。正規化のコードはNode版と共有している |
+| 16.10 設定 | 適合 | `workers_dev`・`preview_urls`・`observability`が無効で、`no_web_socket_compression`、`run_worker_first`、`html_handling: "none"`、`not_found_handling: "none"`を設定している。これらは静的検査で固定されている |
+
+### 7.2 確認した事項
+
+- 101応答に付けている空の`Sec-WebSocket-Extensions`ヘッダーについて確認した。ChromiumのWebSocket実装は、値が空の`Sec-WebSocket-Extensions`を受け取るとハンドシェイクを失敗させる。そこで、同梱のworkerd（`@cloudflare/workerd-linux-64`）に同じ応答を返すWorkerを置いて、実際の101応答を確認した。workerdはこのヘッダーを応答から除いており、ブラウザへは届かない。不具合ではない（7.6節を参照）。
+- Node版とCloudflare版の共有試験は、`createTestRelay()`で接続先だけを切り替え、試験の内容は変えていない。Cloudflare版だけで試験を省略している箇所はない。
+
+### 7.3 [解消] Workerが中継する送信の量に上限がない
+
+レビュー時点では、WorkersのWebSocketに`bufferedAmount`がないため、Node版と共通の送信前検査だけでは送信量を制限できなかった。Workerも未送信量の上限なしに中継していた。受信側がTCP読み取りを止め、`hb.ping`と`room.touch`だけを送り続けた場合、heartbeatでは切断できず、送信キューが増え続けて同じisolateの他の接続へ影響する可能性があった。
+
+今回、次のように修正した。
+
+- [`limits.ts`](../server/cloudflare/src/limits.ts)で、ソケットの各送信方向に`MAX_TRANSFERS_PER_ROOM × MAX_WS_MESSAGE_BYTES + 1 MiB`（4,325,376バイト）の累計上限を定めた。最大100件のdata envelopeに加え、認証・ready・ack・ack_seen・activity・heartbeat・touch等の余裕を持たせた。時間経過や送信成功では回復せず、候補の交代でもリセットしない。
+- Workerの[`bridge.ts`](../server/cloudflare/src/bridge.ts)は、最初の`auth`を含むWorker→RoomDOと、RoomDO→クライアントを別々に数える。共有モジュール（[`index.ts`](../packages/relay-core/src/index.ts)）には任意指定の累計送信上限を追加し、RoomDOだけで有効にした。`cipher`に限らず、すべての送信テキストをUTF-8バイト数で数え、送信前に確認する。Node版は従来の`bufferedAmount`検査を使う。
+- 超過メッセージは送信せず、`SLOW_PEER`と1008で終了する。Workerでの超過も固定の内部close reasonでRoomDOに伝え、対向の通知を同じ終了理由にする。クライアントが指定したclose reasonは内部の失敗として扱わない。`error`・`room.closed`用に上限の内側に4,096バイトを予約し、終了通知も総量を超えない。
+- 仕様15.6.4・15.6.5の「受信レートとheartbeatで代替する」という規定を上記方式へ改め、試験TD16を追加した。長時間の正常利用や多数の再送・操作でも累計上限に達すれば、新しいQRで再接続することを明記した。
+
+[`backpressure.test.ts`](../tests/core/backpressure.test.ts)は、累計上限の境界、終了通知の予約領域、heartbeat応答だけでも上限に達することを確認する。TD16（[`runtime.integration.ts`](../tests/cloudflare/runtime.integration.ts)）は、試験用の中間WSプロキシを迂回してworkerdへ直接TCP接続し、読み取りを停止してもheartbeatとtouchを送り続ける。s2r・r2sそれぞれでRoomDO出力と、空白で膨らませたWorker入力の上限を検証し、別roomの通信継続、最大本文100件とack・ack_seenの完了も確認する。ランタイム内部の送信キューの上限や、heartbeatが読み取り停止を検出することには依存しない。
+
+今回の7.3対応では、Node.js 26.13.1とGo 1.26.2で`npm test`（161件）と`npm run test:cloudflare`（53件）がすべて成功した。両runtimeの型検査、lint・整形、生成物の整合性検査、Cloudflareの静的検査、本番build、Wranglerの配備なしのパッケージ検査も成功した。検証用配備・実機での確認は行っていない。詳細は[`docs/validation.md`](validation.md)に記録した。
+
+### 7.4 [低] subprotocolの受理条件がNode版と違う
+
+Node版（[`server/src/index.ts:199-201`](../server/src/index.ts#L199-L201)）は、提示されたsubprotocolが`qrtoss.v1`の1つだけであることを要求する。Cloudflare版（[`index.ts:146-150`](../server/cloudflare/src/index.ts#L146-L150)）は、提示された一覧に`qrtoss.v1`が含まれていれば受け付ける。仕様10.3（`qrtoss.v1`のみ）と18.7のTD01（Node版と同じ結果）に照らすと、Node版にそろえるべきである。正規のクライアントは`qrtoss.v1`だけを送るため、現状で実害はない。共通の判定関数を`packages/relay-core/src/http.ts`に置くと、差が生じなくなる。
+
+同一IPの接続数の超過は、Node版が503（`CAPACITY`）、Cloudflare版が429（`RATE_LIMITED`、`Retry-After: 6`）を返す。Cloudflare版の応答は仕様15.6.4どおりだが、両版の結果が異なることを試験か仕様に明記するとよい。
+
+### 7.5 [低] リースの返却より後に更新が届くと、最大120秒数え続ける
+
+ソケットのリースの更新（[`bridge.ts:40`](../server/cloudflare/src/bridge.ts#L40)）と返却（[`bridge.ts:57`](../server/cloudflare/src/bridge.ts#L57)）は、それぞれ`capacity(env)`で新しいstubを作り、完了を待たずに送る。DOの呼出しの順序は同じstubの中でしか保証されない。このため、更新と同時に接続が閉じると、返却の後に更新が届くことがある。[`renewSocket()`](../packages/relay-core/src/capacity.ts#L63)は無条件に登録し直すので、閉じた接続が最大120秒、総数とIPごとの数に残る。roomのリース（[`room.ts:46`](../server/cloudflare/src/room.ts#L46)と[`room.ts:28`](../server/cloudflare/src/room.ts#L28)）も同じである。
+
+発生するのは更新（60秒ごと）と切断が重なったときだけで、影響は一時的である。対策するなら、返却したIDをCapacityDOが短時間（リースの期限まで）記録し、その後に届いた更新を無視する。
+
+### 7.6 [参考] 空の`Sec-WebSocket-Extensions`ヘッダーとTD04の判定
+
+7.2節のとおり、workerdは空の`Sec-WebSocket-Extensions`を101応答から除くため、現状では問題がない。しかし、この動作はランタイムの実装に依存しており、互換性フラグ`no_web_socket_compression`だけで圧縮は無効になる。Worker（[`index.ts:177`](../server/cloudflare/src/index.ts#L177)）とRoomDO（[`room.ts:108`](../server/cloudflare/src/room.ts#L108)）のこのヘッダーは削除してよい。また、TD04の判定`upgrade.headers['sec-websocket-extensions'] ?? ''`は、空の値が付いていても合格する。ブラウザが拒否する状態を検出できるよう、ヘッダーがないこと（`undefined`）を確認する判定に変えることを推奨する。
+
+### 7.7 [文書] 仕様と実装の対応
+
+- 仕様17.1は、Cloudflare版を`apps/relay-cloudflare/`（`wrangler.jsonc`を含む）としている。実装は`server/cloudflare/src/`で、`wrangler.jsonc`はリポジトリのルートにある。既存のNode版の行（`apps/relay/`と`server/src/`）と同じく、表を実際の構成に合わせるとよい。
+- 仕様20章は、S37〜S45を「URLと内容は未確認」としている。実装者が[`docs/self-hosting.md`](self-hosting.md)で参照した資料を確認済みであれば、この注記を更新する。
+
+### 7.8 試験について
+
+- このレビュー環境（Node.js 18.19.1）で実行した結果は次のとおりである。
+  - `npm run check:cloudflare`、`tsc --noEmit`、`tsc --project server/cloudflare/tsconfig.json`、`biome lint`、`biome format`はすべて成功した。
+  - `tests/core`と`tests/relay`は36件中35件成功した。失敗した1件は、Node.js 18に`Promise.withResolvers`がないことが原因で、コードの不具合ではない。
+- `npm run test:cloudflare`は、Miniflareが`node:sqlite`（Node.js 22.5以降）を必要とするため、この環境では実行できなかった。[`docs/validation.md`](validation.md)には、Node.js 26.13.1で47件すべてが成功したと記録されている。TD04〜TD14の試験コードは読み、仕様18.7の条件を確認していることを確かめた。
+- [`tests/cloudflare/worker.ts`](../tests/cloudflare/worker.ts)の仮想時計と制御用RPCは試験用のエントリポイントだけにあり、`wrangler.jsonc`が指す本番のエントリポイントには含まれていない。
+- 本番相当の配備で行う試験（TD03、TD08の配備、TD11〜TD13の本番分、TD15）と、ブラウザからCloudflare版への接続は未実施である。E2EはNode版に対してだけ実行されている。7.6節のヘッダーを含め、Chromium・Safariから検証用配備へ接続する確認を、公開前の必須項目に加えることを推奨する。
+
+### 7.9 対応の優先順位
+
+| 順位 | 項目 | 理由 |
+| ---: | --- | --- |
+| 1 | 7.3 Worker中継の送信量の上限（対応済み） | 累計送信量を送信前に制限し、`SLOW_PEER`で終了する。仕様15.6.4・15.6.5とTD16も更新した |
+| 2 | 7.8 検証用配備での試験とブラウザからの接続 | ローカルのworkerdでは、Cloudflareのエッジとゾーン設定の挙動を確認できない |
+| 3 | 7.4 subprotocolの受理条件 | 修正が小さく、両版の差をなくせる |
+| 4 | 7.6 不要なヘッダーとTD04の判定 | ランタイムの挙動に依存しないようにする |
+| 5 | 7.5 リースの更新と返却の順序 | 影響が一時的で、発生条件が限られる |
+| 6 | 7.7 仕様の記述 | 記録の正確さのため |

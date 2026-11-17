@@ -62,6 +62,14 @@ The production dependency audit reported zero vulnerabilities. The full dependen
 
 No Cloudflare account deployment, cross-network real-device test, deployed CLI session, zone rewrite/challenge setting, workers.dev/preview hosting setting or production storage metric was verified. TD03, the deployment part of TD08, the production part of TD11/TD12/TD13 and TD15 still require the separate staging/custom-domain evidence described in the specification and [operations](self-hosting.md#cloudflare-workers-and-durable-objects). Firefox and WebKit were not rerun for this change. Local success does not claim public deployment or completion of those manual acceptance items.
 
+## Worker relay send-volume review fix (7.3)
+
+Worker and RoomDO sockets enforce a lifetime allowance of 4,325,376 UTF-8 bytes per send direction, including 4,096 bytes reserved for closing notifications. Every text message counts, including authentication, heartbeat and touch traffic. Time, successful sends and candidate replacement do not replenish the allowance. Exceeding it drops the message and closes with `SLOW_PEER` and code 1008; the Node adapter retains its `bufferedAmount` check. Long-running normal sessions or repeated retries can also reach this limit and require a new QR.
+
+TD16 connects directly to local workerd, bypassing the test fixture's draining WebSocket proxy. Four cases pause the actual TCP reader while still sending heartbeat and touch, exercise both s2r and r2s, and separately exhaust RoomDO output with maximum-size ciphertext and Worker input with whitespace-padded messages. They verify bounded output including closure, close code/reason, and continued encrypted communication in another room. Another case completes 100 maximum-text transfers with status, ack and ack_seen. Core tests cover exact allowance/reserve boundaries and exhaustion by heartbeat replies alone without `bufferedAmount`.
+
+On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 161 tests and `npm run test:cloudflare` passed all 53 tests, including all 12 real Go CLI scenarios on each adapter. TypeScript checks for both runtimes, lint, formatting, generated-definition checks, Cloudflare non-persistence checks, the production build and Wrangler's deployment dry run passed. These checks use local workerd; no staging deployment or real-device/browser test was performed for this fix.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

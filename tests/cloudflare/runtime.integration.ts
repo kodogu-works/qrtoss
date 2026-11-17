@@ -11,6 +11,8 @@ import { WebSocket } from 'ws';
 import { createCloudflareRelay } from './fixture.ts';
 import { Peer, pair } from '../interop/peer.ts';
 import { responseHeaders } from '../../packages/relay-core/src/http.ts';
+import { C } from '../../packages/protocol/src/constants.ts';
+import { MAX_SOCKET_SEND_BYTES } from '../../server/cloudflare/src/limits.ts';
 const ORIGIN = 'https://qrtoss.test';
 const token = (n = 32) => randomBytes(n).toString('base64url');
 async function setup(
@@ -418,4 +420,122 @@ test('invalid PUBLIC_ORIGIN or IPv6 prefix returns fixed configuration errors', 
     assert.equal(response.status, 500);
     assert.deepEqual(await response.json(), { v: 1, error: { code: 'SERVER_ERROR' } });
   }
+});
+
+test('TD16: stopped readers cannot keep relay queues growing with heartbeat and touch', async (t) => {
+  for (const dir of ['s2r', 'r2s'] as const) {
+    for (const padded of [false, true]) {
+      await t.test(`${dir}: ${padded ? 'Worker input' : 'RoomDO output'} allowance`, async (t) => {
+        let clock = 0;
+        const { relay, url } = await setup(t, {
+          publicOrigin: ORIGIN,
+          now: () => clock,
+        });
+        const direct = await relay.mf.unsafeGetDirectURL();
+        const connect: typeof Peer.connect = async (_base, role, room, cap, origin) => {
+          // Bypass the fixture's draining WS proxy: pause the actual TCP reader
+          // connected to workerd, while continuing to send in the other direction.
+          const ws = new WebSocket(`ws://${direct.host}/ws`, 'qrtoss.v1', {
+            origin,
+            headers: { Host: new URL(ORIGIN).host },
+            finishRequest(request) {
+              request.path = ORIGIN + '/ws';
+              request.end();
+            },
+          });
+          const peer = new Peer(ws);
+          t.after(() => peer.close());
+          await once(ws, 'open');
+          peer.send({ type: 'auth', role, room, cap });
+          await peer.next('auth.ok');
+          return peer;
+        };
+        const peers = await pair(url, ORIGIN, connect);
+        const healthy = await pair(url, ORIGIN);
+        t.after(() => {
+          healthy.r.close();
+          healthy.s.close();
+        });
+        const target = dir === 's2r' ? peers.r : peers.s;
+        const source = dir === 's2r' ? peers.s : peers.r;
+        let receivedBytes = 0;
+        target.ws.on('message', (data) => {
+          receivedBytes += Buffer.byteLength(data as Buffer);
+        });
+        target.ws.pause();
+        const closed = Promise.race([source.next('room.closed'), source.next('error')]);
+        const sourceClosed = once(source.ws, 'close');
+        let failure: Record<string, any> | undefined;
+        let sentBytes = 0;
+        const ct = token(padded ? 16 : C.MAX_PLAINTEXT_BYTES + 16);
+        for (let seq = 1; sentBytes <= 2 * MAX_SOCKET_SEND_BYTES && !failure; seq++) {
+          clock += 250;
+          await relay.control();
+          const envelope = JSON.stringify({
+            v: 1,
+            type: 'cipher',
+            room: peers.room,
+            peer: peers.peer,
+            dir,
+            seq: String(seq),
+            ct,
+          });
+          // Whitespace counts on Worker -> RoomDO even though the core removes
+          // it on output. This isolates the entry Worker's own lifetime limit.
+          const payload = padded ? envelope.padEnd(C.MAX_WS_MESSAGE_BYTES) : envelope;
+          sentBytes += Buffer.byteLength(payload);
+          source.ws.send(payload);
+          for (let i = 0; i < 2; i++) {
+            target.send({ type: 'hb.ping', id: seq * 2 + i });
+            peers.r.send({ type: 'room.touch', peer: peers.peer });
+          }
+          source.send({ type: 'hb.ping', id: seq });
+          const reply = await Promise.race([source.next('hb.pong', (m) => m.id === seq), closed]);
+          if (reply.type !== 'hb.pong') failure = reply;
+        }
+        assert.equal(failure?.code, 'SLOW_PEER');
+        assert.equal(failure.type, padded ? 'error' : 'room.closed');
+        assert.equal((await sourceClosed)[0], 1008);
+        assert.equal(target.ws.isPaused, true);
+        assert.ok(sentBytes <= MAX_SOCKET_SEND_BYTES + C.MAX_WS_MESSAGE_BYTES);
+        const targetClosed = once(target.ws, 'close');
+        target.ws.resume();
+        assert.equal((await targetClosed)[0], 1008);
+        assert.ok(receivedBytes <= MAX_SOCKET_SEND_BYTES);
+        assert.equal((await relay.stats()).rooms, 1);
+        healthy.r.send({ type: 'hb.ping', id: 1 });
+        await healthy.r.next('hb.pong');
+        await healthy.s.app({ type: 'activity' });
+        assert.deepEqual(await healthy.r.receive(), { type: 'activity' });
+      });
+    }
+  }
+});
+
+test('TD16: lifetime allowance permits 100 maximum-text transfers and their acknowledgements', async (t) => {
+  let clock = 0;
+  const { relay, url } = await setup(t, { publicOrigin: ORIGIN, now: () => clock });
+  const { r, s } = await pair(url, ORIGIN);
+  t.after(() => {
+    r.close();
+    s.close();
+  });
+  await r.app({ type: 'mode', value: 'display_only' });
+  await s.receive();
+  const textB64 = Buffer.alloc(C.MAX_TEXT_UTF8_BYTES, 'x').toString('base64url');
+  for (let i = 0; i < C.MAX_TRANSFERS_PER_ROOM; i++) {
+    clock += 250;
+    const id = token(16);
+    await s.app({ type: 'status', state: 'scanned' });
+    await r.receive();
+    await s.app({ type: 'data', id, textB64 });
+    assert.deepEqual(await r.receive(), { type: 'data', id, textB64 });
+    await r.app({ type: 'ack', id, status: 'received' });
+    assert.deepEqual(await s.receive(), { type: 'ack', id, status: 'received' });
+    await s.app({ type: 'ack_seen', id });
+    assert.deepEqual(await r.receive(), { type: 'ack_seen', id });
+  }
+  assert.equal((await relay.stats()).rooms, 1);
+  r.send({ type: 'room.close', reason: 'transfer_limit' });
+  assert.equal((await s.next('room.closed')).code, 'TRANSFER_LIMIT');
 });

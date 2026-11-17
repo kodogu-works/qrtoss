@@ -1,7 +1,9 @@
 import { C } from '../../../packages/protocol/src/constants.ts';
 import { validateControlMessage } from '../../../packages/protocol/src/control.ts';
 import { maintainLease } from '../../../packages/relay-core/src/lease.ts';
+import { SendBudget } from '../../../packages/relay-core/src/limits.ts';
 import { capacity, type Env } from './env.ts';
+import { MAX_SOCKET_SEND_BYTES, SOCKET_CLOSING_RESERVE_BYTES } from './limits.ts';
 import { bestEffort, closeSocket, withDeadline } from './runtime.ts';
 
 export interface BridgeClock {
@@ -31,6 +33,8 @@ export function bridge(
     authenticated = false;
   const connected = clock.now();
   const encoder = new TextEncoder();
+  const toClient = new SendBudget(MAX_SOCKET_SEND_BYTES, SOCKET_CLOSING_RESERVE_BYTES);
+  const toRoom = new SendBudget(MAX_SOCKET_SEND_BYTES, SOCKET_CLOSING_RESERVE_BYTES);
   const cancelAuthTimer = clock.timeout(
     () => reject('PAIR_UNAVAILABLE', 1008),
     C.AUTH_TIMEOUT_SECONDS * 1000,
@@ -59,11 +63,20 @@ export function bridge(
   function reject(code: string, close: number) {
     if (isClosed()) return;
     try {
-      client.send(JSON.stringify({ v: 1, type: 'error', code, scope: 'socket' }));
+      const message = JSON.stringify({ v: 1, type: 'error', code, scope: 'socket' });
+      if (toClient.take(encoder.encode(message).byteLength, true)) client.send(message);
     } catch {
       /* The close path also releases admission. */
     }
     finish(close, code);
+  }
+  function forward(target: WebSocket, data: string, budget: SendBudget) {
+    if (!budget.take(encoder.encode(data).byteLength)) return reject('SLOW_PEER', 1008);
+    try {
+      target.send(data);
+    } catch {
+      finish(1011);
+    }
   }
   function text(data: string | ArrayBuffer, limit: number): data is string {
     if (typeof data !== 'string') {
@@ -126,16 +139,12 @@ export function bridge(
             return reject('SERVER_ERROR', 1011);
           }
         }
-        try {
-          client.send(event.data);
-        } catch {
-          finish(1011);
-        }
+        forward(client, event.data, toClient);
       });
       backend.addEventListener('close', (event) => finish(event.code));
       backend.addEventListener('error', () => finish(1011));
       phase = 'relay';
-      backend.send(data);
+      forward(backend, data, toRoom);
     } catch {
       reject('SERVER_ERROR', 1011);
     }
@@ -151,11 +160,7 @@ export function bridge(
       // Never queue payloads while routing/authenticating a socket.
       reject('PROTOCOL_ERROR', 1008);
     } else if (text(event.data, C.MAX_WS_MESSAGE_BYTES)) {
-      try {
-        backend!.send(event.data);
-      } catch {
-        finish(1011);
-      }
+      forward(backend!, event.data, toRoom);
     }
   });
   client.addEventListener('close', (event) => finish(event.code));

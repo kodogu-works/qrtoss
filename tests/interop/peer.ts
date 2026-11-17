@@ -70,7 +70,7 @@ export class Peer {
     this.ws.terminate();
   }
 }
-export async function pair(base: string, origin = base) {
+export async function pair(base: string, origin = base, connect = Peer.connect) {
   const response = await fetch(base + '/api/v1/rooms', {
     method: 'POST',
     headers: { origin, 'content-type': 'application/json' },
@@ -79,8 +79,8 @@ export async function pair(base: string, origin = base) {
   if (response.status !== 201) throw new Error('room: ' + response.status);
   const room = (await response.json()) as any,
     psk = randomToken(32);
-  const r = await Peer.connect(base, 'receiver', room.room, room.receiverCap, origin);
-  const s = await Peer.connect(base, 'sender', room.room, room.senderJoinCap, origin);
+  const r = await connect(base, 'receiver', room.room, room.receiverCap, origin);
+  const s = await connect(base, 'sender', room.room, room.senderJoinCap, origin);
   const { peer } = await r.next('pair.candidate'),
     rNonce = randomToken(32),
     sNonce = randomToken(32);

@@ -3,6 +3,7 @@ import { createRelayCore } from '../../../packages/relay-core/src/index.ts';
 import { maintainLease } from '../../../packages/relay-core/src/lease.ts';
 import { capacity, type Env } from './env.ts';
 import { random, digest, equal, bestEffort } from './runtime.ts';
+import { MAX_SOCKET_SEND_BYTES } from './limits.ts';
 
 export class RoomDO extends DurableObject<Env> {
   protected readonly core: ReturnType<typeof createRelayCore>;
@@ -18,6 +19,7 @@ export class RoomDO extends DurableObject<Env> {
       random,
       digest,
       equal,
+      maxSocketSendBytes: MAX_SOCKET_SEND_BYTES,
       // The trusted entry Worker performs global authentication admission.
       canAuthenticate: () => true,
       authenticationFailed: (ip) =>
@@ -95,6 +97,8 @@ export class RoomDO extends DurableObject<Env> {
         this.core.fail(connection, 'MESSAGE_TOO_LARGE', 1009);
       else if (event.reason === 'PROTOCOL_ERROR' && event.code === 1008)
         this.core.fail(connection, 'PROTOCOL_ERROR', 1008);
+      else if (event.reason === 'SLOW_PEER' && event.code === 1008)
+        this.core.fail(connection, 'SLOW_PEER', 1008);
       disconnected();
     });
     server.addEventListener('error', () => {

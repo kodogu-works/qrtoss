@@ -1,3 +1,20 @@
+/** A lifetime send allowance. Time and successful sends never replenish it. */
+export class SendBudget {
+  private bytes = 0;
+
+  constructor(
+    private readonly limit: number,
+    private readonly closingReserve: number,
+  ) {}
+
+  take(bytes: number, closing = false) {
+    const limit = this.limit - (closing ? 0 : this.closingReserve);
+    if (this.bytes + bytes > limit) return false;
+    this.bytes += bytes;
+    return true;
+  }
+}
+
 export type Bucket = { tokens: number; at: number };
 
 export function bucket(at: number, tokens: number): Bucket {

@@ -3,7 +3,7 @@ import { validateControlMessage } from '../../protocol/src/control.ts';
 import type { ControlMessage } from '../../protocol/src/control.generated.ts';
 import { validateEnvelope } from '../../protocol/src/validation.ts';
 import closeReasons from '../../../protocol/close-reasons.json' with { type: 'json' };
-import { bucket, take, type Bucket } from './limits.ts';
+import { bucket, take, SendBudget, type Bucket } from './limits.ts';
 
 type Json = Record<string, unknown>;
 type State = 'CREATED' | 'WAITING' | 'CANDIDATE' | 'COMMITTED' | 'ACTIVE' | 'CLOSED';
@@ -24,6 +24,7 @@ export type Client = {
   lastPing: number;
   messages: Bucket;
   bytes: Bucket;
+  sendBudget?: SendBudget;
   authenticating: boolean;
   closed: boolean;
 };
@@ -53,6 +54,8 @@ export interface CoreOptions {
   equal(a: Uint8Array, b: Uint8Array): Promise<boolean>;
   canAuthenticate(ip: string): boolean | Promise<boolean>;
   authenticationFailed(ip: string): void;
+  /** Adapters without bufferedAmount can bound all bytes sent over a socket's lifetime. */
+  maxSocketSendBytes?: number;
   onRoomClosed?(id: string): void;
 }
 
@@ -93,6 +96,10 @@ export function createRelayCore(options: CoreOptions) {
       lastPing: -1,
       messages: bucket(t, 40),
       bytes: bucket(t, 524288),
+      sendBudget:
+        options.maxSocketSendBytes === undefined
+          ? undefined
+          : new SendBudget(options.maxSocketSendBytes, 2 * C.MAX_CONTROL_MESSAGE_BYTES),
       authenticating: false,
       closed: false,
     };
@@ -116,10 +123,16 @@ export function createRelayCore(options: CoreOptions) {
   function send(c: Client | undefined, message: Json): boolean {
     if (c?.ws.readyState !== 1) return false;
     const encoded = JSON.stringify(message);
+    const bytes = encoder.encode(encoded).byteLength;
     if (
-      (c.ws.bufferedAmount ?? 0) + encoder.encode(encoded).byteLength >
-      C.MAX_SOCKET_BUFFER_BYTES
+      c.sendBudget &&
+      !c.sendBudget.take(bytes, message.type === 'room.closed' || message.type === 'error')
     ) {
+      if (c.room) closeRoom(c.room, 'SLOW_PEER', undefined, 1008);
+      else c.ws.close(1008);
+      return false;
+    }
+    if ((c.ws.bufferedAmount ?? 0) + bytes > C.MAX_SOCKET_BUFFER_BYTES) {
       if (c.room) closeRoom(c.room, 'SLOW_PEER');
       else c.ws.close(1008);
       return false;
