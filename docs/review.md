@@ -9,6 +9,7 @@
 | 方法 | 初回レビューの各指摘と、修正後のソースコード・[`docs/spec.md`](spec.md)・試験の突き合わせ。静的検査と一部の試験の実行 |
 | 実行した検査 | `biome lint`・`biome format`・`tsc --noEmit`・`generate-protocol --check`はすべて成功。`tests/{protocol,relay,web}`は140件中137件成功（下記） |
 | 未実施 | Go CLIの試験・`go vet`・TSとGoの相互運用試験（レビュー環境にGoがない）、Playwright E2E、実機・実配備での確認 |
+| 追加の再レビュー | `469537e..c3ef4a5`（`0e04e67`・`72c847f`・`3fe6ac7`・`c3ef4a5`、15ファイル、+1,709／−676行）。2026-11-18実施。コードと試験の読み合わせのみで、Goの試験・Staticcheck・相互運用試験とCIの結果は確認していない（レビュー環境にGoと`gh`がない）。結果は6節 |
 
 失敗した3件（`tests/protocol/crypto.test.ts`）は、レビュー環境のNode.js 18にグローバル`crypto`と`String.prototype.isWellFormed`がないことが原因である。プロジェクトはNode.js 26以上を要求している（`engines`、CI）ため、コードの不具合ではない。中継サーバーとIP制限の試験はすべて成功した。
 
@@ -92,3 +93,47 @@ Goの整形・lintをCIで検査していなかったため、[`.github/workflow
 | 2 | 3.1 ready期限・idle期限のローカル切断の見直し（対応済み） | 通知遅延による誤切断を防ぎ、終了理由をWebの方針と仕様に合わせた |
 | 3 | 3.2 Goの整形・lintのCI検査（対応済み） | 整形と静的解析の指摘をCIで検出し、外部レビューのコストを削減する |
 | 4 | 3.3 `room.close`の二重送信（今回対応済み） | 終了通知の試行を1回に抑え、最初の終了理由を維持する |
+
+## 6. 追加の再レビュー（`469537e..c3ef4a5`）
+
+### 6.1 対応内容の確認
+
+| 項目 | 判定 | 確認内容 |
+| --- | --- | --- |
+| 2.2 CLI `receive()`の状態型 | 解消 | 旧実装（`469537e`の`session.go`）とメッセージごとの受理条件を照合し、挙動の差がないことを確認した。旧実装の`committed`・`ready`・`active`・`writing`・`written`・`rejected`・`disconnected`の組合せは状態型で表現されている。[`onData()`](../cli/internal/client/receiver_messages.go#L111)の`s.state.(*receiverConnected)`は、直前の条件により型が必ず一致するためパニックしない |
+| 3.1 ready期限・idle期限のローカル切断 | 解消 | [`onTick()`](../cli/internal/client/receiver.go#L150)にサーバーの期限による切断はなく、自己の最終活動から30分・`--timeout`・heartbeatの判定は維持されている。仕様4.4・11.3の追記は実装と一致する。[`socket-proxy.ts`](../tests/interop/socket-proxy.ts)は受信順を保ったまま遅延させるため、相互運用試験の前提は実際の配送順序と一致する |
+| 3.2 Goの整形・lintのCI検査 | 解消 | 追加した2ステップの位置と失敗条件は記載どおりである。`client_test.go`の修正も適切である |
+| 3.3 `room.close`の二重送信 | 解消 | `closeAttempted`は受信セッションごとに初期化され、QRの再生成をまたいで残らない。6ケースの試験で、終了理由の維持と送信試行が1回であることを確認できる |
+
+本書で参照しているコードの行番号はすべて`c3ef4a5`と一致し、実Go CLIの相互運用試験は記載どおり12件である。
+
+### 6.2 [低] SIGINT・SIGTERMでの`room.close`（`user_end`）が届かない
+
+[`main.go`](../cli/cmd/qrtoss/main.go#L18)はシグナルの受信時に`ctx`を取り消す。[`closeRoom()`](../cli/internal/client/receiver.go#L323)は同じ`ctx`から作ったcontextで書き込むため、`receive()`の`defer`で呼ばれた時点で取り消し済みである。coder/websocketでは、この書き込みはすぐに失敗するか、送信途中で接続が閉じられる。仕様14章（SIGINT・SIGTERMでは可能な範囲で`room.close`（`user_end`）を送る）を満たさない。
+
+この挙動は`469537e`以前からあり、今回の変更で生じたものではない。ただし3.3の対応で送信の試行を1回にしたため、シグナルによる終了ではその1回が確実に失われる。
+
+修正案として、`closeRoom()`だけ`context.WithoutCancel(s.ctx)`を元に100msの期限を付ける。取り消し済みの`ctx`で`closeRoom()`を呼ぶ単体試験を追加すると、回帰を防げる。
+
+### 6.3 [低] `pair.proof`の受理状態が広い
+
+[`onProof()`](../cli/internal/client/receiver_pairing.go#L27)は`s.candidate()`で判定するため、`receiverCommitting`（`pair.commit`の送信後）でもproofを受理する。この状態で無効なproofを受けると[L45](../cli/internal/client/receiver_pairing.go#L45)で`receiverCandidate`へ戻り、その後の`pair.committed`はプロトコル違反になる。有効なproofなら`pair.commit`を再送する。
+
+旧実装と同じ挙動であり、サーバーが1つのcandidateに2通目のproofを中継しなければ実害はない。`s.state.(*receiverCandidate)`で受理状態を限定すれば、状態型にした意図と一致する。
+
+### 6.4 [文書] 本書冒頭の対象範囲
+
+冒頭の表の「対象コミット」「差分」は`469537e`のままで、本文には`0e04e67`〜`c3ef4a5`の対応も記載されている。1節の「上記対象コミットでは」と4節の「今回の…対応では」も、どの時点の記述かが混在している。対象範囲を`c3ef4a5`まで広げるか、追加コミットを表に明記するとよい。
+
+### 6.5 [参考] CIとローカル検証のGoの版
+
+CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録ではローカル検証にGo 1.26.2を使っている。Staticcheckの指摘はGoの版によって変わり得るため、GitHub ActionsでのCIの成功もあわせて確認する。
+
+### 6.6 対応の優先順位
+
+| 順位 | 項目 | 理由 |
+| ---: | --- | --- |
+| 1 | 6.2 シグナル終了時の`room.close` | 仕様違反であり、修正と試験が小さい |
+| 2 | 6.5 CIの成功の確認 | 検証時のGoの版がCIと異なる |
+| 3 | 6.3 `pair.proof`の受理状態 | 実害はないが、状態型による不正状態の排除を徹底できる |
+| 4 | 6.4 本書冒頭の対象範囲 | 記録の正確さのため |
