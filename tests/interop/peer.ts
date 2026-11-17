@@ -30,8 +30,8 @@ export class Peer {
     });
     ws.on('error', () => {});
   }
-  static async connect(base: string, role: string, room: string, cap: string) {
-    const ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws', 'qrtoss.v1', { origin: base });
+  static async connect(base: string, role: string, room: string, cap: string, origin = base) {
+    const ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws', 'qrtoss.v1', { origin });
     const p = new Peer(ws);
     await once(ws, 'open');
     p.send({ type: 'auth', role, room, cap });
@@ -70,17 +70,17 @@ export class Peer {
     this.ws.terminate();
   }
 }
-export async function pair(base: string) {
+export async function pair(base: string, origin = base) {
   const response = await fetch(base + '/api/v1/rooms', {
     method: 'POST',
-    headers: { origin: base, 'content-type': 'application/json' },
+    headers: { origin, 'content-type': 'application/json' },
     body: '{"v":1}',
   });
   if (response.status !== 201) throw new Error('room: ' + response.status);
   const room = (await response.json()) as any,
     psk = randomToken(32);
-  const r = await Peer.connect(base, 'receiver', room.room, room.receiverCap);
-  const s = await Peer.connect(base, 'sender', room.room, room.senderJoinCap);
+  const r = await Peer.connect(base, 'receiver', room.room, room.receiverCap, origin);
+  const s = await Peer.connect(base, 'sender', room.room, room.senderJoinCap, origin);
   const { peer } = await r.next('pair.candidate'),
     rNonce = randomToken(32),
     sNonce = randomToken(32);
@@ -105,5 +105,13 @@ export async function pair(base: string) {
   r.send({ type: 'pair.active', peer });
   await r.next('pair.active');
   await s.next('pair.active');
-  return { r, s, room: room.room, peer, psk };
+  return {
+    r,
+    s,
+    room: room.room,
+    peer,
+    psk,
+    receiverCap: room.receiverCap,
+    senderJoinCap: room.senderJoinCap,
+  };
 }

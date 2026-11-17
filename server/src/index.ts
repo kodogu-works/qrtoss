@@ -4,48 +4,20 @@ import { BlockList } from 'node:net';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { C } from '../../packages/protocol/src/constants.ts';
-import { validateControlMessage } from '../../packages/protocol/src/control.ts';
-import type { ControlMessage } from '../../packages/protocol/src/control.generated.ts';
-import { hasExactFields, validateEnvelope } from '../../packages/protocol/src/validation.ts';
-import closeReasons from '../../protocol/close-reasons.json' with { type: 'json' };
+import { hasExactFields } from '../../packages/protocol/src/validation.ts';
+import { createRelayCore } from '../../packages/relay-core/src/index.ts';
+import { IpLimits, take } from '../../packages/relay-core/src/limits.ts';
+import {
+  publicOrigin,
+  responseHeaders,
+  staticPath,
+  assetCacheControl,
+} from '../../packages/relay-core/src/http.ts';
 import { ipLimitKey, normalizeIp } from './ip.ts';
 
 type Json = Record<string, unknown>;
-type State = 'CREATED' | 'WAITING' | 'CANDIDATE' | 'COMMITTED' | 'ACTIVE' | 'CLOSED';
-type Bucket = { tokens: number; at: number };
-type IpRecord = { at: number; create: Bucket; failures: Bucket };
-type Client = {
-  ws: WebSocket;
-  ip: string;
-  connected: number;
-  heartbeat: number;
-  room?: Room;
-  role?: 'receiver' | 'sender';
-  peer?: string;
-  lastPing: number;
-  messages: Bucket;
-  bytes: Bucket;
-};
-type Room = {
-  id: string;
-  state: State;
-  pairing: number;
-  receiverHash?: Buffer;
-  joinHash?: Buffer;
-  receiver?: Client;
-  sender?: Client;
-  peer?: string;
-  candidate: number;
-  ready: number;
-  idle: number;
-  challenge: boolean;
-  proof: boolean;
-  confirm: boolean;
-  seq: { s2r: bigint; r2s: bigint };
-  candidates: Bucket;
-};
 export interface RelayOptions {
   publicOrigin: string;
   staticDir?: string;
@@ -61,45 +33,26 @@ export interface RelayOptions {
 }
 const random = (n: number) => randomBytes(n).toString('base64url');
 const digest = (s: string) => createHash('sha256').update(s).digest();
-function bucket(at: number, tokens: number): Bucket {
-  return { tokens, at };
-}
-function take(b: Bucket, now: number, rate: number, burst: number, amount = 1) {
-  b.tokens = Math.min(burst, b.tokens + (Math.max(0, now - b.at) * rate) / 1000);
-  b.at = now;
-  if (b.tokens < amount) return false;
-  b.tokens -= amount;
-  return true;
-}
-function origin(value: string, allowHttp: boolean) {
-  const url = new URL(value);
-  if (
-    url.origin !== value ||
-    url.username ||
-    url.password ||
-    url.pathname !== '/' ||
-    url.search ||
-    url.hash ||
-    (url.protocol !== 'https:' &&
-      !(
-        allowHttp &&
-        url.protocol === 'http:' &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-      ))
-  ) {
-    throw new Error('PUBLIC_ORIGIN_INVALID');
-  }
-  return url;
-}
-
 /** In-memory, opaque ciphertext relay. No request, capability, or payload logging. */
 export function createRelay(options: RelayOptions) {
-  const publicUrl = origin(options.publicOrigin, options.allowHttpLoopback === true);
+  const publicUrl = publicOrigin(options.publicOrigin, options.allowHttpLoopback === true);
   const now = options.now ?? (() => performance.now());
   const wallNow = options.wallNow ?? (() => Date.now());
-  const rooms = new Map<string, Room>();
-  const clients = new Set<Client>();
-  const ips = new Map<string, IpRecord>();
+  const ips = new IpLimits();
+  const core = createRelayCore({
+    now,
+    wallNow,
+    random,
+    digest: async (value) => digest(value),
+    equal: async (a, b) => timingSafeEqual(a, b),
+    canAuthenticate: (ip) => ips.canAuthenticate(ip, now()),
+    authenticationFailed: (ip) => ips.authenticationFailed(ip, now()),
+  });
+  const { clients } = core;
+  function sweep() {
+    core.sweep();
+    ips.sweep(now());
+  }
   const trusted = new BlockList();
   for (const cidr of options.trustProxyCidrs ?? []) {
     const [address, prefix] = cidr.split('/');
@@ -141,32 +94,9 @@ export function createRelay(options: RelayOptions) {
     }
     return ipLimitKey(ip, ipv6PrefixLength);
   }
-  function ipRecord(ip: string) {
-    let entry = ips.get(ip);
-    if (!entry) {
-      if (ips.size >= 4096) ips.delete(ips.keys().next().value!);
-      const t = now();
-      entry = { at: t, create: bucket(t, 5), failures: bucket(t, 20) };
-    }
-    entry.at = now();
-    // Map iteration is insertion-ordered: refresh on access for bounded LRU eviction.
-    ips.delete(ip);
-    ips.set(ip, entry);
-    return entry;
-  }
   function headers(res: ServerResponse) {
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader(
-      'Content-Security-Policy',
-      `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ${publicUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${publicUrl.host}; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
-    );
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
-    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    if (publicUrl.protocol === 'https:')
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    for (const [name, value] of Object.entries(responseHeaders(publicUrl)))
+      res.setHeader(name, value);
   }
   function reply(res: ServerResponse, status: number, code?: string, data?: unknown) {
     headers(res);
@@ -189,7 +119,7 @@ export function createRelay(options: RelayOptions) {
       if (stopping) return reply(res, 503, 'SERVER_SHUTDOWN');
       if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type'] ?? ''))
         return reply(res, 400, 'PROTOCOL_ERROR');
-      const ip = ipRecord(ipOf(req));
+      const ip = ips.record(ipOf(req), now());
       if (!take(ip.create, now(), 10 / 60, 5)) {
         res.setHeader('Retry-After', '6');
         return reply(res, 429, 'RATE_LIMITED');
@@ -215,53 +145,23 @@ export function createRelay(options: RelayOptions) {
         return reply(res, 400, 'PROTOCOL_ERROR');
       if ((body as Json).v !== 1) return reply(res, 400, 'VERSION_UNSUPPORTED');
       sweep();
-      if (rooms.size >= maxRooms) return reply(res, 503, 'CAPACITY');
-      const t = now();
+      if (core.stats().rooms >= maxRooms) return reply(res, 503, 'CAPACITY');
       const id = random(16),
         receiverCap = random(32),
         senderJoinCap = random(32);
-      const room: Room = {
-        id,
-        state: 'CREATED',
-        pairing: t + C.PAIRING_TTL_SECONDS * 1000,
-        receiverHash: digest(receiverCap),
-        joinHash: digest(senderJoinCap),
-        candidate: 0,
-        ready: 0,
-        idle: 0,
-        challenge: false,
-        proof: false,
-        confirm: false,
-        seq: { s2r: -1n, r2s: -1n },
-        candidates: bucket(t, 10),
-      };
-      rooms.set(id, room);
+      const deadlines = core.createRoom(id, digest(receiverCap), digest(senderJoinCap));
       return reply(res, 201, undefined, {
         v: 1,
         room: id,
         receiverCap,
         senderJoinCap,
-        serverTime: wallNow(),
-        pairingExpiresAt: epoch(room.pairing),
+        ...deadlines,
       });
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return reply(res, 405, 'PROTOCOL_ERROR');
     if (!options.staticDir) return reply(res, 404, 'PROTOCOL_ERROR');
-    const requested =
-      path === '/'
-        ? 'index.html'
-        : path === '/send'
-          ? 'send/index.html'
-          : path?.startsWith('/assets/')
-            ? path.slice(1)
-            : null;
-    if (
-      !requested ||
-      requested.includes('..') ||
-      requested.includes('%') ||
-      requested.includes('\\')
-    )
-      return reply(res, 404, 'PROTOCOL_ERROR');
+    const requested = staticPath(path ?? '');
+    if (!requested) return reply(res, 404, 'PROTOCOL_ERROR');
     const root = resolve(options.staticDir),
       file = resolve(root, requested);
     if (!file.startsWith(root + sep)) return reply(res, 404, 'PROTOCOL_ERROR');
@@ -272,9 +172,7 @@ export function createRelay(options: RelayOptions) {
       return reply(res, 404, 'PROTOCOL_ERROR');
     }
     headers(res);
-    if (requested.startsWith('assets/') && /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9.]+$/.test(requested)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    }
+    res.setHeader('Cache-Control', assetCacheControl(requested));
     const ext = requested.split('.').at(-1) ?? '';
     const types: Record<string, string> = {
       html: 'text/html',
@@ -289,286 +187,6 @@ export function createRelay(options: RelayOptions) {
       'Content-Type': `${types[ext] ?? 'application/octet-stream'}${['html', 'js', 'css', 'json'].includes(ext) ? '; charset=utf-8' : ''}`,
     });
     res.end(req.method === 'HEAD' ? undefined : content);
-  }
-  function epoch(deadline: number) {
-    return Math.round(wallNow() + Math.max(0, deadline - now()));
-  }
-  function send(c: Client | undefined, message: Json): boolean {
-    if (!c || c.ws.readyState !== WebSocket.OPEN) return false;
-    const encoded = JSON.stringify(message);
-    if (c.ws.bufferedAmount + Buffer.byteLength(encoded) > C.MAX_SOCKET_BUFFER_BYTES) {
-      if (c.room) closeRoom(c.room, 'SLOW_PEER');
-      else c.ws.close(1008);
-      return false;
-    }
-    c.ws.send(encoded);
-    return true;
-  }
-  function notification(c: Client | undefined, type: string, fields: Json = {}) {
-    return send(c, { v: 1, type, ...fields });
-  }
-  function closeRoom(room: Room, code: string, initiator?: Client, closeCode = 1000) {
-    if (room.state === 'CLOSED') return;
-    const beforeCommit = room.state !== 'COMMITTED' && room.state !== 'ACTIVE';
-    room.state = 'CLOSED';
-    rooms.delete(room.id);
-    room.receiverHash = undefined;
-    room.joinHash = undefined;
-    for (const c of [room.receiver, room.sender]) {
-      if (!c) continue;
-      c.room = undefined;
-      if (c !== initiator)
-        notification(c, 'room.closed', {
-          code: c.role === 'sender' && beforeCommit ? 'PAIR_UNAVAILABLE' : code,
-        });
-      c.ws.close(closeCode);
-    }
-    room.receiver = room.sender = undefined;
-  }
-  function closeCandidate(room: Room, code: string, closeCode = 1008, notifySender = true) {
-    const sender = room.sender;
-    room.sender = undefined;
-    room.peer = undefined;
-    room.challenge = room.proof = room.confirm = false;
-    room.state = room.receiver ? 'WAITING' : 'CREATED';
-    if (sender) {
-      sender.room = undefined;
-      if (notifySender) notification(sender, 'error', { code, scope: 'candidate' });
-      sender.ws.close(closeCode);
-      notification(room.receiver, 'pair.candidate_closed', { peer: sender.peer, code });
-    }
-  }
-  function fail(c: Client, code = 'PROTOCOL_ERROR', close = 1008) {
-    notification(c, 'error', {
-      code,
-      scope: c.room
-        ? c.role === 'sender' && c.room.state === 'CANDIDATE'
-          ? 'candidate'
-          : 'room'
-        : 'socket',
-    });
-    if (c.room) {
-      if (c.role === 'sender' && c.room.state === 'CANDIDATE')
-        closeCandidate(c.room, code, close, false);
-      else closeRoom(c.room, code, undefined, close);
-    }
-    c.ws.close(close);
-  }
-  function live(room: Room) {
-    const t = now();
-    if (room.state === 'CLOSED') return false;
-    if (['CREATED', 'WAITING', 'CANDIDATE'].includes(room.state) && t >= room.pairing) {
-      closeRoom(room, 'PAIR_EXPIRED');
-      return false;
-    }
-    if (room.state === 'CANDIDATE' && t >= room.candidate) closeCandidate(room, 'PAIR_TIMEOUT');
-    if (room.state === 'COMMITTED' && t >= room.ready) {
-      closeRoom(room, 'READY_TIMEOUT');
-      return false;
-    }
-    if (room.state === 'ACTIVE' && t >= room.idle) {
-      closeRoom(room, 'SESSION_EXPIRED');
-      return false;
-    }
-    return rooms.has(room.id);
-  }
-  function sweep() {
-    for (const room of rooms.values()) live(room);
-    const t = now();
-    for (const c of clients) {
-      if (
-        (!c.role && t - c.connected >= C.AUTH_TIMEOUT_SECONDS * 1000) ||
-        (c.role && t - c.heartbeat >= C.HEARTBEAT_TIMEOUT_SECONDS * 1000)
-      )
-        fail(c, c.role ? 'PEER_CLOSED' : 'PAIR_UNAVAILABLE');
-    }
-    for (const [ip, value] of ips) if (t - value.at >= 60000) ips.delete(ip);
-  }
-  function auth(c: Client, m: Extract<ControlMessage, { type: 'auth' }>) {
-    const limits = ipRecord(c.ip);
-    take(limits.failures, now(), 20 / 60, 20, 0);
-    if (limits.failures.tokens < 1) return fail(c, 'RATE_LIMITED');
-    const room = rooms.get(m.room);
-    if (room && !live(room)) return fail(c, 'PAIR_UNAVAILABLE');
-    const hash = m.role === 'receiver' ? room?.receiverHash : room?.joinHash;
-    if (!room || !hash || !timingSafeEqual(hash, digest(m.cap))) {
-      take(limits.failures, now(), 20 / 60, 20);
-      return fail(c, 'PAIR_UNAVAILABLE');
-    }
-    if (m.role === 'receiver') {
-      if (room.receiver || room.state !== 'CREATED') return fail(c, 'DUPLICATE_ROLE');
-      c.role = 'receiver';
-      c.room = room;
-      room.receiver = c;
-      room.state = 'WAITING';
-      notification(c, 'auth.ok', {
-        role: c.role,
-        room: room.id,
-        serverTime: wallNow(),
-        pairingExpiresAt: epoch(room.pairing),
-      });
-    } else {
-      if (!room.receiver || room.state === 'CREATED') return fail(c, 'PAIR_UNAVAILABLE');
-      if (room.sender) return fail(c, 'PEER_BUSY');
-      if (room.state !== 'WAITING') return fail(c, 'PAIR_UNAVAILABLE');
-      if (!take(room.candidates, now(), 10 / 60, 10)) return fail(c, 'RATE_LIMITED');
-      c.role = 'sender';
-      c.room = room;
-      c.peer = random(16);
-      room.sender = c;
-      room.peer = c.peer;
-      room.state = 'CANDIDATE';
-      room.candidate = Math.min(room.pairing, now() + C.CANDIDATE_TTL_SECONDS * 1000);
-      const fields = {
-        peer: c.peer,
-        serverTime: wallNow(),
-        candidateExpiresAt: epoch(room.candidate),
-      };
-      notification(c, 'auth.ok', {
-        role: c.role,
-        room: room.id,
-        pairingExpiresAt: epoch(room.pairing),
-        ...fields,
-      });
-      notification(room.receiver, 'pair.candidate', fields);
-    }
-    c.heartbeat = now();
-  }
-  function message(c: Client, raw: Buffer, binary: boolean) {
-    if (!c.role && now() - c.connected >= C.AUTH_TIMEOUT_SECONDS * 1000)
-      return fail(c, 'PAIR_UNAVAILABLE');
-    if (binary) return fail(c);
-    const length = raw.length;
-    if (!take(c.messages, now(), 20, 40) || !take(c.bytes, now(), 262144, 524288, length))
-      return fail(c, 'RATE_LIMITED');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
-    } catch {
-      return fail(c);
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail(c);
-    const m = parsed as Json;
-    if (m.v !== 1) return fail(c, 'VERSION_UNSUPPORTED');
-    if (m.type !== 'cipher' && length > C.MAX_CONTROL_MESSAGE_BYTES)
-      return fail(c, 'MESSAGE_TOO_LARGE', 1009);
-    if (!c.role) {
-      try {
-        const control = validateControlMessage(m, 'server');
-        return control.type === 'auth' ? auth(c, control) : fail(c);
-      } catch {
-        return fail(c);
-      }
-    }
-    const room = c.room;
-    if (!room || !live(room) || c.room !== room) return;
-    try {
-      if (m.type === 'cipher') validateEnvelope(m);
-      else validateControlMessage(m, 'server');
-    } catch {
-      return fail(c);
-    }
-    if (m.type === 'hb.ping') {
-      if ((m.id as number) <= c.lastPing) return fail(c);
-      c.lastPing = m.id as number;
-      c.heartbeat = now();
-      return void notification(c, 'hb.pong', { id: m.id, serverTime: wallNow() });
-    }
-    if (m.type === 'room.close') {
-      const codes: Record<string, string> = closeReasons;
-      if (c.role === 'sender' && room.state === 'CANDIDATE')
-        return closeCandidate(room, 'PEER_CLOSED', 1000, false);
-      return closeRoom(room, codes[m.reason as string]!, c);
-    }
-    if (m.type === 'cipher') {
-      if (
-        !['COMMITTED', 'ACTIVE'].includes(room.state) ||
-        m.room !== room.id ||
-        m.peer !== room.peer ||
-        m.dir !== (c.role === 'sender' ? 's2r' : 'r2s')
-      )
-        return fail(c);
-      const seq = BigInt(m.seq as string),
-        dir = m.dir as 's2r' | 'r2s';
-      if (
-        seq !== room.seq[dir] + 1n ||
-        !room.confirm ||
-        (room.state === 'COMMITTED' && seq !== 0n) ||
-        (c.role === 'receiver' && seq === 0n && room.seq.s2r !== 0n)
-      )
-        return fail(c);
-      const target = c.role === 'sender' ? room.receiver : room.sender;
-      if (!target || target.ws.readyState !== WebSocket.OPEN) return closeRoom(room, 'PEER_CLOSED');
-      room.seq[dir] = seq;
-      return void send(target, m);
-    }
-    if (m.peer !== room.peer) return fail(c);
-    switch (m.type) {
-      case 'pair.challenge':
-        if (c.role !== 'receiver' || room.state !== 'CANDIDATE' || room.challenge) return fail(c);
-        room.challenge = true;
-        return void send(room.sender, m);
-      case 'pair.proof':
-        if (c.role !== 'sender' || room.state !== 'CANDIDATE' || !room.challenge || room.proof)
-          return fail(c);
-        room.proof = true;
-        return void send(room.receiver, m);
-      case 'pair.reject':
-        if (c.role !== 'receiver' || room.state !== 'CANDIDATE') return fail(c);
-        return closeCandidate(room, 'AUTH_FAILED');
-      case 'pair.commit': {
-        if (
-          c.role !== 'receiver' ||
-          room.state !== 'CANDIDATE' ||
-          !room.proof ||
-          now() >= room.candidate ||
-          now() >= room.pairing ||
-          room.sender?.ws.readyState !== WebSocket.OPEN
-        )
-          return fail(c);
-        room.state = 'COMMITTED';
-        room.joinHash = undefined;
-        room.ready = now() + C.READY_TIMEOUT_SECONDS * 1000;
-        room.idle = now() + C.SESSION_IDLE_SECONDS * 1000;
-        const fields = {
-          peer: room.peer,
-          serverTime: wallNow(),
-          readyExpiresAt: epoch(room.ready),
-          idleExpiresAt: epoch(room.idle),
-        };
-        notification(room.receiver, 'pair.committed', fields);
-        notification(room.sender, 'pair.committed', fields);
-        return;
-      }
-      case 'pair.confirm':
-        if (c.role !== 'receiver' || room.state !== 'COMMITTED' || room.confirm) return fail(c);
-        room.confirm = true;
-        return void send(room.sender, m);
-      case 'pair.active': {
-        if (
-          c.role !== 'receiver' ||
-          room.state !== 'COMMITTED' ||
-          room.seq.s2r !== 0n ||
-          room.seq.r2s !== 0n
-        )
-          return fail(c);
-        const fields = { peer: room.peer, serverTime: wallNow(), idleExpiresAt: epoch(room.idle) };
-        notification(room.receiver, 'pair.active', fields);
-        notification(room.sender, 'pair.active', fields);
-        if (rooms.has(room.id)) room.state = 'ACTIVE';
-        return;
-      }
-      case 'room.touch': {
-        if (c.role !== 'receiver' || room.state !== 'ACTIVE') return fail(c);
-        room.idle = now() + C.SESSION_IDLE_SECONDS * 1000;
-        const fields = { peer: room.peer, serverTime: wallNow(), idleExpiresAt: epoch(room.idle) };
-        notification(room.receiver, 'room.touched', fields);
-        notification(room.sender, 'room.touched', fields);
-        return;
-      }
-      default:
-        return fail(c);
-    }
   }
   server.on('upgrade', (req, socket, head) => {
     function reject(status: number, code: string) {
@@ -590,39 +208,23 @@ export function createRelay(options: RelayOptions) {
     )
       return reject(503, 'CAPACITY');
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const t = now();
-      const client: Client = {
-        ws,
-        ip,
-        connected: t,
-        heartbeat: t,
-        lastPing: -1,
-        messages: bucket(t, 40),
-        bytes: bucket(t, 524288),
-      };
-      clients.add(client);
+      const client = core.connect(ws, ip);
       ws.on('message', (raw, binary) => {
-        try {
-          message(client, Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer), binary);
-        } catch {
-          fail(client, 'SERVER_ERROR', 1011);
-        }
+        void core
+          .message(client, Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer), binary)
+          .catch(() => core.fail(client, 'SERVER_ERROR', 1011));
       });
       ws.on('error', (error) => {
         const oversized =
           (error as Error & { code?: string }).code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
         if (client.room)
-          fail(client, oversized ? 'MESSAGE_TOO_LARGE' : 'PROTOCOL_ERROR', oversized ? 1009 : 1008);
+          core.fail(
+            client,
+            oversized ? 'MESSAGE_TOO_LARGE' : 'PROTOCOL_ERROR',
+            oversized ? 1009 : 1008,
+          );
       });
-      ws.on('close', () => {
-        clients.delete(client);
-        const room = client.room;
-        if (room) {
-          if (client.role === 'sender' && room.state === 'CANDIDATE')
-            closeCandidate(room, 'PEER_CLOSED');
-          else closeRoom(room, 'PEER_CLOSED');
-        }
-      });
+      ws.on('close', () => core.disconnect(client));
     });
   });
   server.requestTimeout = 15000;
@@ -632,7 +234,7 @@ export function createRelay(options: RelayOptions) {
   return {
     server,
     sweep,
-    stats: () => ({ rooms: rooms.size, sockets: clients.size }),
+    stats: core.stats,
     async listen(port = 0, host = '127.0.0.1') {
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject);
@@ -648,13 +250,9 @@ export function createRelay(options: RelayOptions) {
     async close() {
       stopping = true;
       clearInterval(interval);
-      for (const room of rooms.values()) closeRoom(room, 'SERVER_SHUTDOWN');
-      for (const client of clients) {
-        notification(client, 'error', { code: 'SERVER_SHUTDOWN', scope: 'socket' });
-        client.ws.close(1000);
-      }
+      core.shutdown();
       const timer = setTimeout(() => {
-        for (const c of clients) c.ws.terminate();
+        for (const c of clients) (c.ws as WebSocket).terminate();
       }, 1000);
       timer.unref();
       await Promise.all([

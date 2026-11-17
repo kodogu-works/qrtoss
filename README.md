@@ -54,6 +54,10 @@ QRTOSS_BASE_PATH=/qrtoss/ npm run build
 
 Keep `PUBLIC_ORIGIN` set to the origin only, for example `https://myserver.example`. Configure Apache to remove `/qrtoss` before forwarding HTTP and WebSocket requests to the app. See the [Apache subpath deployment instructions](docs/self-hosting.md#browser-deployment-under-an-apache-subpath) for the complete configuration. The base path is fixed at build time; the default is `/`. The CLI and the supplied Docker Compose/Caddy setup continue to use the origin root.
 
+## Cloudflare hosting
+
+The relay also runs on Cloudflare Workers and Durable Objects with the same browser and CLI protocol. Configure the custom domain and `PUBLIC_ORIGIN` in `wrangler.jsonc`, run `npm run test:cloudflare`, then deploy with `npm run deploy:cloudflare`. For local workerd use `npm run dev:cloudflare`. See [Cloudflare setup, privacy and operations](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
+
 ## CLI
 
 Build the standalone executable:

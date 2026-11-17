@@ -11,7 +11,7 @@
     "dev": "node scripts/dev.mjs",
     "generate": "node scripts/generate-protocol.mjs",
     "check:generated": "node scripts/generate-protocol.mjs --check",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc --project server/cloudflare/tsconfig.json",
     "lint": "biome lint --error-on-warnings",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:unit": "node --import tsx --test tests/protocol/*.test.ts",
@@ -20,13 +20,18 @@
     "build": "npm run generate && vite build --config web/vite.config.ts && node scripts/copy-licenses.mjs && esbuild server/src/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server/main.js",
     "start": "node dist/server/main.js",
     "gen:protocol": "node scripts/generate-protocol.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project server/cloudflare/tsconfig.json",
     "test:integration": "node --import tsx --test tests/relay/*.test.ts",
     "test:e2e": "playwright test",
     "notices": "node scripts/notices.mjs",
     "release:cli": "sh scripts/release-cli.sh",
     "format": "biome format --write",
-    "format:check": "biome format"
+    "format:check": "biome format",
+    "build:web": "npm run generate && vite build --config web/vite.config.ts && node scripts/copy-licenses.mjs",
+    "dev:cloudflare": "node scripts/cloudflare.mjs dev",
+    "deploy:cloudflare": "node scripts/cloudflare.mjs deploy",
+    "check:cloudflare": "node scripts/check-cloudflare.mjs",
+    "test:cloudflare": "node scripts/cloudflare.mjs test"
   },
   "dependencies": {
     "qr-scanner": "1.4.2",
@@ -35,6 +40,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
+    "@cloudflare/workers-types": "5.20261117.1",
     "@playwright/test": "1.65.1",
     "@types/node": "26.6.6",
     "@types/pngjs": "6.0.5",
@@ -42,9 +48,11 @@
     "@types/ws": "8.18.2",
     "esbuild": "0.28.2",
     "jsqr": "1.4.0",
+    "miniflare": "5.20261117.0-beta",
     "pngjs": "7.0.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vite": "8.3.8"
+    "vite": "8.3.8",
+    "wrangler": "4.164.0"
   }
 }

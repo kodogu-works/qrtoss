@@ -16,6 +16,8 @@ E2EE does not protect against compromised endpoints or malicious JavaScript/bina
 
 No history database, offline queue, analytics, remote translation or runtime external CDN is used. Host swap, core dumps, snapshots, proxy payload capture and third-party hosting logs are deployment responsibilities; see [operations](docs/self-hosting.md).
 
+Cloudflare hosting terminates TLS and delivers client code through Cloudflare. RoomDO and CapacityDO keep only memory state; their SQLite namespaces receive no application writes. Workers Logs are disabled, but Cloudflare zone analytics/security events may still retain connection metadata. Treat Cloudflare as part of the hosting trust boundary and disclose that metadata separately from the application's non-persistence guarantee. See [Cloudflare operations](docs/self-hosting.md#cloudflare-workers-and-durable-objects) for zone settings and storage checks.
+
 ## Development constraints
 
 Do not add logging of payloads, ciphertext, keys, complete pairing URLs, capability tokens or raw parse exceptions. Validate external schemas, canonical encodings, limits, roles, sequences, deadlines and generation after asynchronous operations. Use platform cryptographic primitives. Preserve the published protocol vectors and run cross-language, browser and real-device checks before release.

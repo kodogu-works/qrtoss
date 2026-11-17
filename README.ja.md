@@ -54,6 +54,10 @@ QRTOSS_BASE_PATH=/qrtoss/ npm run build
 
 `PUBLIC_ORIGIN` は `https://myserver.example` のように origin だけを指定します。Apache は HTTP・WebSocket の転送時に `/qrtoss` を取り除きます。設定例は [Apache のサブパス配信手順](docs/self-hosting.md#browser-deployment-under-an-apache-subpath)を参照してください。ベースパスはビルド時に確定し、既定値は `/` です。CLI と同梱の Docker Compose／Caddy 構成は引き続きドメイン直下を使用します。
 
+## Cloudflareで運用
+
+Cloudflare Workers と Durable Objects でも、同じブラウザ・CLI の通信形式で中継できます。`wrangler.jsonc` にカスタムドメインと `PUBLIC_ORIGIN` を設定し、`npm run test:cloudflare` で検証後、`npm run deploy:cloudflare` で配備します。ローカルの workerd は `npm run dev:cloudflare` で起動できます。[Cloudflare の設定・非保存・運用手順](docs/self-hosting.md#cloudflare-workers-and-durable-objects)を参照してください。
+
 ## CLI
 
 単体の実行ファイルをビルドします。

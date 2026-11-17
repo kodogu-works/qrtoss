@@ -9,7 +9,7 @@ import { resolve, join } from 'node:path';
 import { createServer } from 'node:https';
 import { once } from 'node:events';
 import WebSocket from 'ws';
-import { createRelay } from '../../server/src/index.ts';
+import { createTestRelay } from '../helpers/relay.ts';
 import {
   CipherChannel,
   deriveKeys,
@@ -130,7 +130,7 @@ async function start(
     touches = 0;
   const delayedProof = Promise.withResolvers<void>();
   const delayedNotification = Promise.withResolvers<void>();
-  const relay = createRelay({
+  const relay = await createTestRelay({
     publicOrigin: origin,
     ...(scenario ? { now: () => clock, wallNow: () => 1700000000000 + clock } : {}),
   });
@@ -166,7 +166,7 @@ async function start(
             // ACTIVE was accepted in time; it remains valid after the relay's
             // original ready deadline, even while its notification is delayed.
             clock = 10001;
-            relay.sweep();
+            await relay.sweep();
             await new Promise((resolve) => setTimeout(resolve, 750));
             forward();
             delayedNotification.resolve();
@@ -187,7 +187,7 @@ async function start(
           }
           if (scenario === 'commit' && message.type === 'pair.committed') {
             clock = 300001;
-            relay.sweep();
+            await relay.sweep();
             await new Promise((resolve) => setTimeout(resolve, 750));
           }
           if (scenario === 'lateProof' && message.type === 'pair.proof' && !serverExpired) {
@@ -273,7 +273,7 @@ async function start(
       const renewed = pairingUrl(child);
       serverExpired = true;
       clock = 300001;
-      relay.sweep();
+      await relay.sweep();
       sender!.close();
       proof = await prove(await renewed);
     }
@@ -307,7 +307,7 @@ async function start(
         assert.equal(scenario, 'idle');
         serverExpired = true;
         clock += 1800000;
-        relay.sweep();
+        void relay.sweep();
       },
       async close() {
         sender?.close();

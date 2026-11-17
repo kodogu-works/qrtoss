@@ -5,11 +5,11 @@
 | 項目 | 内容 |
 | --- | --- |
 | 文書名 | qrtoss 仕様書（`docs/spec.md`） |
-| 文書バージョン | 1.0.0 |
-| 作成日 | 2026-11-15 |
-| 状態 | 初版の開発実装あり。検証状況は[`docs/validation.md`](../docs/validation.md)。公開・外部セキュリティ監査は未実施 |
+| 文書バージョン | 1.1.0 |
+| 作成日 | 2026-11-15（1.1.0の改訂：2026-11-18） |
+| 状態 | 初版の開発実装あり。検証状況は[`docs/validation.md`](../docs/validation.md)。Cloudflare Durable Objects版の中継サーバー（第15.6節）も実装あり。本番環境での検証は未実施。公開・外部セキュリティ監査は未実施 |
 | サービス名 | qrtoss |
-| 対象 | Web受信ページ、Web送信ページ、中継サーバー、CLI受信クライアント、自己ホスト構成、配布、検証・公開手順 |
+| 対象 | Web受信ページ、Web送信ページ、中継サーバー（Node版・Cloudflare Durable Objects版）、CLI受信クライアント、自己ホスト構成、配布、検証・公開手順 |
 | 通信プロトコル識別子 | `qrtoss/1`（WebSocket subprotocol `qrtoss.v1`） |
 | CLIのコマンド名 | `qrtoss` |
 | ライセンス | MIT License（SPDX識別子: `MIT`）。全文はリポジトリルートの`LICENSE.md` |
@@ -82,6 +82,7 @@
 - ブラウザのWeb Crypto APIとCLIのGo標準ライブラリによる同一方式の端末間暗号化と、WSSによる即時中継。
 - 日本語・英語・スペイン語の利用者向け表示。他の言語を追加できる翻訳ファイル構成。
 - ソース公開可能な配布物と自己ホスト手順。CLIのOS・CPU別バイナリと版固定の試用ランチャー。
+- 中継サーバーの2つの実装：VPS等でリバースプロキシの背後に置くNode版と、Cloudflare WorkersとDurable Objectsで動くCloudflare版（第3.4節、第15.6節、第16.10節）。どちらもクライアントとの通信形式と暗号方式を変えない。
 
 ### 1.3 初版の対象外
 
@@ -191,7 +192,7 @@ sequenceDiagram
 | 部分 | 選択 |
 | --- | --- |
 | Webフロントエンド | TypeScript、Vite、通常のDOM。UIフレームワークは初版では不要 |
-| 中継サーバー | Node.js LTS（26 LTSを推奨）、TypeScript、`ws`。HTTP APIはNode標準HTTPで実装可能 |
+| 中継サーバー | Node版：Node.js LTS（26 LTSを推奨）、TypeScript、`ws`。HTTP APIはNode標準HTTPで実装可能。Cloudflare版：Cloudflare Workers、Durable Objects、TypeScript、`wrangler`（第15.6節）。roomの処理は両版で共通のモジュールを使う |
 | CLI | Go（サポート中の安定版。`crypto/hkdf`を標準で含むGo 1.24以降）。単一の実行ファイル |
 | 暗号 | ブラウザはWeb Crypto API、CLIはGo標準の`crypto/*`。暗号プリミティブを自作しない |
 | QR読み取り（Web） | 読取アダプター経由で`qr-scanner`を使用。Workerを含め同じoriginから配信 |
@@ -201,7 +202,7 @@ sequenceDiagram
 | 共通定義 | `protocol/`の言語非依存JSON（定数・エラーコード・テストベクトル）からTS・Goの定数を生成（第17.2節） |
 | パッケージ管理 | npmとコミット済み`package-lock.json`。CI・配備は`npm ci`。CLIはGo modulesと`go.sum` |
 | テスト | Nodeのテストランナー、ブラウザ統合テスト、`go test`、相互運用試験、iPhone/Android実機確認 |
-| 配備 | 単一Nodeプロセス＋HTTPSリバースプロキシ。Docker Composeの例を提供 |
+| 配備 | Node版：単一Nodeプロセス＋HTTPSリバースプロキシ。Docker Composeの例を提供。Cloudflare版：`wrangler`の設定ファイルとカスタムドメイン（第16.10節） |
 | CLI配布 | OS・CPU別バイナリ、SHA-256一覧と署名、Homebrew tap、版固定の試用ランチャー |
 
 Node.js 26は2026年10月にLTSへ移行し、Node.js 24はMaintenance LTSの期間にある。Node.js 27以降は年1回のメジャーリリースとなる予定である。実装開始時にサポート状況と依存パッケージのライセンス・既知脆弱性を確認し、採用する正確なバージョンとコンテナdigestを固定する。新しいLTSへの変更は、プロトコル互換性を維持して行える。[S01] [S02] [S03] [S04] [S30]
@@ -215,8 +216,24 @@ CLIの暗号は、`crypto/sha256`、`crypto/hmac`、`crypto/hkdf`、`crypto/aes`
 - フロントエンド、API、`/ws`を同じ公開originで提供する。
 - ブラウザ版は公開URLのルートパス配備に加え、ビルド時の `QRTOSS_BASE_PATH`（既定値 `/`）で指定するサブパス配備に対応する。例は `/qrtoss/`。リバースプロキシが接頭辞を取り除き、Nodeサーバーへ既存のルートパスで転送する。CLIと同梱Compose/Caddy構成はルートパス配備を対象とする。
 - 同じWi-Fiへの接続は不要。送信端末と受信側（ブラウザまたはCLI）から公開originのHTTPS/WSSに接続できることが条件。CLIが外部からの接続を待ち受ける必要はない。
-- 初版は1プロセスのメモリ内room管理とする。複数プロセスや複数ノードへの自動スケールは対象外。
-- プロセス再起動時には全roomを失効させ、再ペアリングを求める。
+- Node版は1プロセスのメモリ内room管理とする。Node版を複数プロセスや複数ノードへ自動スケールすることは対象外。Cloudflare版はroomごとにDurable Objectを割り当て、room状態をそのメモリだけに持つ（第15.6節）。
+- プロセス再起動時（Cloudflare版では新版の配備やDurable Objectの再起動時）には該当するroomを失効させ、再ペアリングを求める。
+
+### 3.4 中継サーバーの実装の選択
+
+中継サーバーにはNode版とCloudflare版がある。どちらも第10章のHTTP API・WSS・制御メッセージ、第9章の暗号方式（HKDF-SHA256、AES-256-GCM）、第4章の期限、第13章のエラーコードに従う。Web受信ページ、送信ページ、CLIはどちらにも同じ実装で接続する。
+
+| 項目 | Node版 | Cloudflare版 |
+| --- | --- | --- |
+| 想定する配備先 | VPS、自宅サーバー、コンテナ。Apache・Nginx・Caddy等のHTTPSリバースプロキシの背後に置く | Cloudflare WorkersとDurable Objects。Cloudflareで管理するドメインのカスタムドメイン |
+| room状態の置き場所 | 1プロセスのメモリ内`Map` | roomごとのDurable Object（RoomDO）のメモリ |
+| room総数・接続数の上限 | プロセス内のカウンター | 配備に1つのDurable Object（CapacityDO）によるリース管理（第15.6.7節） |
+| TLSの終端 | 運用者のリバースプロキシ | Cloudflare |
+| 接続元IP・時刻・暗号文長を観測できる者 | 運用者のサーバーとプロキシ | 運用者に加えてCloudflare（第15.6.6節） |
+| ブラウザ版のサブパス配備 | 可（第3.3節） | 対象外。ルートパス配備だけとする |
+| roomが失われる契機 | プロセスの再起動 | 新版の配備、Durable Objectの再起動・退去 |
+
+VPS上でApacheまたはNginxを前段に置く場合はNode版を使う。この場合はCloudflare向けのコードと設定を必要としない。1つの公開originへの要求をNode版とCloudflare版へ振り分けてはならない。同じroomへの接続が別の実装に届くと接続が成立しない。
 
 ## 4. 共通の設定値と有効期限
 
@@ -578,7 +595,7 @@ CLIは、出力処理に必要な間だけ本文と出力レコードを保持�
 
 ### 9.1 乱数と表現形式
 
-ブラウザは`crypto.getRandomValues()`、サーバーはNodeの`crypto.randomBytes()`、CLIはGoの`crypto/rand`を使用する。時刻、連番、`Math.random()`、`math/rand`を秘密値の生成に使わない。
+ブラウザは`crypto.getRandomValues()`、サーバーはNode版がNodeの`crypto.randomBytes()`、Cloudflare版がWorkersの`crypto.getRandomValues()`、CLIはGoの`crypto/rand`を使用する。時刻、連番、`Math.random()`、`math/rand`を秘密値の生成に使わない。
 
 | 値 | 生成元 | バイト数 | base64url文字数 | サーバーへの送信 |
 | --- | --- | ---: | ---: | --- |
@@ -705,7 +722,7 @@ IVは12バイト。AES-GCMは同じ鍵でIVを再利用してはならない。�
 
 ### 10.1 HTTPルート
 
-以下はNodeサーバーが受け付けるパスである。ブラウザ版のサブパス配備では、公開側でベースパスを前置し、プロキシがそれを除去する。例えば公開側の `POST /qrtoss/api/v1/rooms` は内部の `POST /api/v1/rooms` へ、公開側の `/qrtoss/ws` は内部の `/ws` へ転送する。Originの完全一致検査はサブパス配備でも変更しない。
+以下はNodeサーバーが受け付けるパスである。Cloudflare版のWorkerも同じパスを同じ契約で受け付ける（第15.6節）。ブラウザ版のサブパス配備では、公開側でベースパスを前置し、プロキシがそれを除去する。例えば公開側の `POST /qrtoss/api/v1/rooms` は内部の `POST /api/v1/rooms` へ、公開側の `/qrtoss/ws` は内部の `/ws` へ転送する。Originの完全一致検査はサブパス配備でも変更しない。
 
 | メソッド・パス | 用途 | 正常時 |
 | --- | --- | --- |
@@ -1636,7 +1653,7 @@ stderrの出力に失敗した場合も、stdoutへ代わりにエラーを書�
 
 ## 15. 中継サーバーの実装要件
 
-中継サーバーは、Web受信ページ・送信ページ・CLIを区別せず、本章の規則で扱う。
+中継サーバーは、Web受信ページ・送信ページ・CLIを区別せず、本章の規則で扱う。第15.1〜15.5節はNode版を前提に書いている。Cloudflare版は第15.6節の読み替えと追加要件に従い、それ以外は同じ規則を満たす。
 
 ### 15.1 メモリ内データ
 
@@ -1701,9 +1718,120 @@ SIGTERM時は新規HTTP room作成とWS受付を止め、readyzを503にする�
 - クラッシュダンプ・heap snapshot・本番のデバッグポートを既定で無効にする。
 - 管理用の集計値を作る場合も、本文や接続一覧を含めず、外部解析サービスへ送らない。
 
+### 15.6 Cloudflare Durable Objects版
+
+本節は、第15.1〜15.5節の規則をCloudflare WorkersとDurable Objects（以下DO）の上で満たすための読み替えと追加要件である。クライアントから見たHTTP API、WSS、制御メッセージ、暗号方式、期限、エラーコード、close code、close reasonの対応は変更しない。プロトコル識別子は`qrtoss/1`、subprotocolは`qrtoss.v1`のままとする。
+
+#### 15.6.1 DOを使う理由
+
+Workersは、要求ごとに異なる実行インスタンス（isolate）や異なるデータセンターで処理されることがある。このため、Node版のようにプロセス内の`Map<roomId, Room>`でroomを管理すると、同じroomのreceiver・candidate・senderの接続が別のインスタンスに届き、ペアリングが成立しない。Workerのグローバル変数に置いたroom状態も、要求の間で共有される保証がない。
+
+Cloudflare版は、1つのroomを1つのDOインスタンス（RoomDO）に対応させ、同じroomへの要求をすべてそのDOへ振り分ける。DOはIDごとに1つだけ存在し、1つのインスタンス内の処理は`await`の位置でだけ切り替わる。したがって、第11.3節のatomicなcommitは、確認と変更の間に`await`を挟まない同期処理としてRoomDO内で実装できる。複数クライアントのWebSocket接続を1か所で調整する用途にDOを使うことは、Cloudflareが推奨する構成である。[S37] [S38]
+
+#### 15.6.2 構成要素
+
+| 構成要素 | 数 | 役割 | 保持する状態 |
+| --- | --- | --- | --- |
+| Worker | 要求ごと | 全HTTP要求の入口、静的assetの配信、Origin検査、room作成、`/ws`の受付と最初の`auth`の検査、RoomDOへの振り分けと中継 | 処理中の一時変数と、WebSocket接続ごとの転送状態だけ |
+| RoomDO | roomごとに1つ | 第11章の状態機械、capability照合、期限、候補、commit、cipherの中継、heartbeat、roomごとのレート制限、`closeRoom()` | 第15.1節のroom情報。インスタンスのメモリだけに置く |
+| CapacityDO | 配備ごとに1つ（`idFromName("global")`） | room総数・接続数・同一IPの接続数とレートの管理（第15.6.7節） | 件数、リース期限、正規化したIPキーのカウンター。メモリだけに置く |
+
+RoomDOのIDは`env.ROOM.idFromName(roomId)`で導出する。room作成時は、受信側に近いWorkerが最初にRoomDOを呼ぶため、RoomDOは通常、受信側に近い地域に作られる。
+
+#### 15.6.3 room作成
+
+`POST /api/v1/rooms`は次の順で処理する。
+
+1. Workerが、Origin、`Content-Type`、本文`{"v":1}`、本文サイズを第10.1節どおりに検査する。
+2. WorkerがCapacityDOに対し、同一IPのroom作成レートの確認とroom枠の取得を一度に要求する。超過時はそれぞれ429（固定秒数の`Retry-After`）、503（`CAPACITY`）を返す。
+3. Workerが`crypto.getRandomValues()`で`roomId`、`receiverCap`、`senderJoinCap`を生成し、両capabilityのSHA-256を計算する。
+4. Workerが`idFromName(roomId)`のRoomDOの内部RPC `create`を呼び、`roomId`と両capabilityのハッシュだけを渡す。capability自体はRoomDOへ渡さない。
+5. RoomDOは未初期化の場合に限り`CREATED`として初期化し、リースの更新を開始して、`serverTime`と`pairingExpiresAt`を返す。初期化済みの場合（roomIdの衝突。実際には起こらない想定）はエラーを返し、Workerは取得した枠を返却して503を返す。
+6. Workerが第10.1節の形式でレスポンスを返す。
+
+RoomDOの呼出しが失敗した場合は、取得したroom枠を返却し、503を返す。
+
+#### 15.6.4 `/ws`の振り分け
+
+roomIdは最初の`auth`メッセージの中にあり、upgrade要求のURLとヘッダーには含まれない（第10.3節）。Cloudflare版はこの形式を変えず、Workerがクライアント側のWebSocketを終端し、最初のメッセージを見て振り分け先のRoomDOを決める。roomIdをURLのパスやクエリへ移す方式は、クライアントの通信形式を変え、Cloudflareの要求ログにroomIdを残すため採用しない。
+
+1. Workerが、メソッド`GET`、パス`/ws`、Upgrade要求であること、Originの完全一致、subprotocolに`qrtoss.v1`が含まれることを検査する。満たさない要求はupgradeしない。Originの不一致は403とする。
+2. WorkerがCapacityDOから未認証接続の枠と同一IPの接続枠を取得する（第15.6.7節）。取得できない場合はupgradeしない（503、または同一IPの上限超過では429）。
+3. Workerが`WebSocketPair`で接続を受け入れ、`Sec-WebSocket-Protocol: qrtoss.v1`を付けて101を返す。permessage-deflateを無効にする。Cloudflareの現行compatibility dateではWebSocket圧縮が既定で有効なため、`no_web_socket_compression`フラグを指定し、101応答の`Sec-WebSocket-Extensions`も空にして交渉を拒否する。内部のWorker–RoomDO接続にも適用する。[S46]
+4. Workerは、接続から`AUTH_TIMEOUT_SECONDS`以内の最初のメッセージが、テキストで、`MAX_CONTROL_MESSAGE_BYTES`以下で、共通の制御メッセージ検証関数で`auth`として妥当であることを確認する。時間切れ、`auth`以外、schema違反、バイナリは1008、過大なメッセージは1009で閉じ、RoomDOへ接続しない。
+5. WorkerはCapacityDOに対し、そのIPが認証失敗の連続で一時拒否中でないことを確認する。拒否中なら第15.3節と同じ扱いで閉じる。
+6. Workerは`idFromName(auth.room)`のRoomDOへ内部のWebSocket upgrade要求を送り（`stub.fetch()`）、得られたWebSocketを受け入れ、最初の`auth`メッセージをそのまま転送する。内部要求には第15.6.8節のクライアントIPを内部ヘッダーで付ける。
+7. 以後、Workerは両方向のテキストメッセージを内容を解釈せずに転送する。転送前に`MAX_WS_MESSAGE_BYTES`の上限とバイナリの拒否だけを再確認する。heartbeat（`hb.ping`）にWorkerは応答せず、RoomDOが応答する。
+8. 片方の接続が閉じた、またはエラーになった場合、Workerはもう片方も閉じる。RoomDOから受けたclose codeはそのままクライアントへ伝える。送信できないcode（1005、1006）や、RoomDOへの接続が予期せず切れた場合は、クライアントへ1011を送る。クライアント側の切断は、RoomDOにとってNode版のソケット切断と同じ扱いになる。
+9. Workerは、RoomDOから届いた最初のメッセージが`auth.ok`であれば、CapacityDOの未認証接続の枠を認証済みの枠へ切り替える。Workerがメッセージの内容を見るのはこの`type`の確認だけとする。接続の終了時には接続枠を返却する。
+
+形式が正しく存在しないroomIdの`auth`は、未初期化のRoomDOに届く。RoomDOは第10.5節どおり`PAIR_UNAVAILABLE`を返して閉じ、CapacityDOへ認証失敗として記録する。未初期化のRoomDOは状態を作らず、そのまま破棄されてよい。
+
+RoomDOはWorkerの内部呼出しからだけ到達でき、公開のルートを持たない。このため、RoomDOは内部ヘッダーのクライアントIPを信頼してよい。
+
+#### 15.6.5 RoomDOの処理
+
+- 第11章、第15.1節、第15.4節の規則をそのまま適用する。room状態はインスタンスのメモリだけに置く。
+- 再接続は新しいroomで行う。同じroomへの復帰は実装しない（第4.5節）。RoomDOが閉じたroomのIDで再び`create`を受けることはない。閉じたroomへの`auth`は`PAIR_UNAVAILABLE`とする。
+- 期限は`setTimeout`と、各処理の直前の期限確認（第15.4節）で管理する。DOのAlarm APIは使わない（Alarmの設定は永続ストレージへの書き込みを伴う）。
+- Workersの`Date.now()`は、処理の途中でI/Oを待つまで進まない。期限の判定には各イベントの処理開始時の時刻を使う。Workersには単調時計がないため、第10.6節の内部期限もこの時刻で管理する。公開する`serverTime`と各`expiresAt`の形式は変えない。[S43]
+- capabilityのハッシュ計算は`crypto.subtle.digest()`で非同期になる。ハッシュ計算と`await`は状態の確認より前に終え、状態の確認と変更の間に`await`を挟まない（第11.3節）。照合には長さを確認したうえで`crypto.subtle.timingSafeEqual()`を使う。
+- CapacityDOへのリース更新や返却を待つ`await`を、状態遷移の確認と変更の間に置かない。CapacityDOへの通知は状態変更の後に行い、失敗しても進行中のroomを閉じない。
+- WebSocketは標準のAPI（`accept()`）で受け入れる。WebSocket Hibernation API（`ctx.acceptWebSocket()`）は使わない。理由は次のとおり。
+  1. 休止するとメモリ上のroom状態が失われ、復帰のために状態の永続化か`serializeAttachment()`による復元が必要になる。
+  2. 全クライアントが15秒ごとに`id`付きの`hb.ping`を送り、サーバーは同じ`id`と`serverTime`で応答する。この応答は`setWebSocketAutoResponse()`の固定応答で代替できないため、休止できる時間が短い。
+  3. 標準のAPIで受け入れたWebSocketが開いている間、DOはメモリから退去されない。Node版と同じタイマーとメモリ内状態を使える。
+
+  代わりに、接続中はDOの実行時間（duration）が課金される。これは第15.6.7節の上限とレート制限で抑える。[S38] [S39]
+- 将来Hibernation APIを採用する場合は、本節と第18.7節を改訂してから実装する。その場合も次を守る。`serializeAttachment()`に保持するのは、role、peerId、認証済みかどうか、ハンドシェイクの段階、期限、seqの検査に必要な値など、休止から復帰するための最小限の接続状態に限る。capability、capabilityのハッシュ以外の認証情報、PSK、鍵、本文、暗号文、本文ハッシュを入れない。room状態をDOのストレージへ書かない。復帰時に状態を矛盾なく復元できない場合は、roomを閉じて再ペアリングを求める。
+- `CREATED`状態でreceiverがまだ接続していない間は、RoomDOがメモリから退去されることがある。その後に届いたreceiverの`auth`は`PAIR_UNAVAILABLE`となり、受信側はNode版の再起動時と同じく新しいroomを作り直す。
+- バックプレッシャー：WorkersのWebSocketは、実装時点で`bufferedAmount`を提供していない（実装時に確認する）。提供されない間は、第15.2節の送信前検査を、第15.3節のソケットごとのメッセージ数・受信量の制限と、第10.6節のheartbeatによる切断判定で代替する。サーバー独自の再送キューを作らない点はNode版と同じである。
+- 停止処理：Cloudflare版にはSIGTERMに相当する通知がない。新版の配備、DOの再起動、障害によりRoomDOが終了した場合、`SERVER_SHUTDOWN`を送れないことがある。クライアントは切断またはheartbeatの途絶でこれを検出し、新しいQRで接続し直す（第10.6節）。
+- ログ：第15.5節に従う。`console`へ出力してよいのは固定のイベント名とエラーコードだけとする。
+
+#### 15.6.6 非保存の確認
+
+DOは永続ストレージを持つ仕組みだが、Cloudflare版は第8.3節の非保存を次の方法で守る。
+
+- RoomDOとCapacityDOは、ストレージAPI（`ctx.storage`のKey-Value APIとSQL API）、Alarm API、`serializeAttachment()`を使わない。本文、暗号文、capability、capabilityのハッシュ、roomId、peerId、IPアドレスをどこにも永続化しない。
+- Workers KV、D1、R2、Queues、Cache API、Analytics Engine、Hyperdriveのbindingを配備設定に含めない。
+- Cloudflareの設定でデータベースを作らないことと、実装の内部でデータを永続化しないことは別の条件である。新しいDOクラスは、wranglerの`migrations`で`new_sqlite_classes`として宣言する（SQLiteをストレージに使うDO）。この宣言により各DOにSQLiteの記憶域を割り当てられるが、コードから書き込まなければ内容は空のままである。次の3点で確認する。
+  1. ソースコードに、ストレージAPI、Alarm API、`serializeAttachment()`の参照がないことを静的検査で確認する（CIで実行）。
+  2. ローカル実行（`wrangler dev`のworkerd）で一連の転送を行った後、ローカルの永続化ディレクトリにDOのデータが作られていないこと、または空であることを確認する。
+  3. 本番配備の後、CloudflareのダッシュボードまたはAPIで、DOのストレージ使用量とストレージ操作数が0であることを確認する。
+- TLSはCloudflareが終端する。Cloudflareは、Workers・DOの運用者として、接続元IP、時刻、暗号文長、通信量を観測できる。本文は端末間で暗号化されているため、Cloudflareも復号できない。ただし配信するHTML・JavaScriptもCloudflareを経由するため、第8.2節の「配信元」にはCloudflareを含める。この点を公開する非保存方針に記載する。
+
+#### 15.6.7 上限とレート制限
+
+Node版のプロセス内カウンターは、Workers・DOの間では共有できない。Cloudflare版は第15.3節の各上限を次のように実現する。初期値は第15.3節と同じとする。
+
+| 対象 | 実現方法 |
+| --- | --- |
+| room総数（`MAX_ROOMS`） | CapacityDOがroomごとのリースを持つ。room作成時に取得し、RoomDOが状態が`CLOSED`になるまで60秒ごとに更新し、`closeRoom()`で返却する。リースの期限は120秒とし、更新されなかったものは数えない。超過時は503（`CAPACITY`） |
+| WS総数、未認証WS総数、同一IPの同時WS（`MAX_SOCKETS`、`MAX_UNAUTHENTICATED_SOCKETS`、`MAX_SOCKETS_PER_IP`） | CapacityDOが接続ごとのリースを持つ。Workerが接続受付時に取得し、接続中は60秒ごとに更新し、終了時に返却する。リースの期限は120秒 |
+| room作成のレート、認証失敗のレート（同一IP） | CapacityDOが第15.3節と同じトークンバケット、同じ正規化キー、同じLRU上限（4,096件、無活動60秒で削除）で管理する |
+| 同一roomのcandidate作成、ソケットごとのメッセージ数・受信量 | RoomDOが第15.3節どおりに管理する |
+
+- 更新の要求で対象のリースが見つからない場合、CapacityDOは上限にかかわらず登録し直す。CapacityDOだけが再起動した場合、件数は一時的に0から数え直しになるが、既存のroomと接続は閉じず、次の更新（最大60秒後）で件数が回復する。
+- 新しいroomや接続の受付でCapacityDOを呼べない、または応答がない場合は、受付を拒否する（503）。既存のroomと接続は閉じない。
+- CapacityDOは配備に1つであり、全リクエストの上限判定がここを通る。小規模公開ではこれで足りる。1つのDOが処理できる量には上限があるため、処理量が問題になった場合の分割は将来対応とする。[S42]
+- Cloudflareの機能（WAFのレート制限ルール等）を追加の防御として使ってよい。ただし、その機能がCLIの通信を妨げないようにする（第16.10.3節）。
+
+#### 15.6.8 クライアントIP
+
+WorkerはクライアントのIPを`CF-Connecting-IP`ヘッダーから得て、第15.3節の規則で正規化する。Cloudflare版は`TRUST_PROXY_CIDRS`と`X-Forwarded-For`を使わない。Workerは、RoomDOへの内部要求とCapacityDOへの呼出しに、このIPを渡す。IPは制限の判定に使うメモリ内の値だけに用い、ログへ出力しない。[S44]
+
+#### 15.6.9 Node版との実装の共有
+
+第11章と第15.1〜15.4節のroom処理（状態機械、制御メッセージの検証、期限、候補、commit、cipherの中継、レート制限、`closeRoom()`）を、実行環境に依存しないモジュールに分離する。Node版とRoomDOはこのモジュールを共有する。環境に依存する部分（ソケットへの送信と切断、タイマー、時刻、乱数、ハッシュ、HTTP、上限管理）は、それぞれのアダプターで実装する。Cloudflare版だけのroom状態遷移を別に実装してはならない。
+
+共有モジュールは`node:*`モジュールと`ws`に依存しない。ハッシュと定時間比較は非同期のインターフェースで受け取り、第15.6.5節の`await`の位置の規則をNode版にも同じく適用する。
+
 ## 16. 自己ホスト・配布・公開構成
 
 ### 16.1 必要な実行環境
+
+第16.1〜16.3節はNode版の配備を対象とする。Cloudflare版の配備は第16.10節で定める。第16.4節以降はCloudflare版にも適用する。
 
 - 有効なHTTPS証明書を使用できるドメイン。
 - Node.js LTS（26 LTSを推奨）の単一プロセス、またはそれを含むコンテナ。
@@ -1866,6 +1994,54 @@ curl --proto '=https' --proto-redir '=https' -fsSL https://qrtoss.example/cli/v0
 
 ランチャー自身の引数不正は2、中断は130または143とする。最終exec自体に失敗した場合はPOSIXシェルの終了状態に従い、82へ一律に変更しようとしない。本体に置き換わった後は本体のコードをそのまま返す。外側のcurlやシェルがランチャーを開始できなかった場合の終了状態は、この独自コード表の対象外である。
 
+### 16.10 Cloudflare版の配備
+
+#### 16.10.1 必要なもの
+
+- Cloudflareのアカウントと、Cloudflareで管理するドメイン。公開originはそのドメインのカスタムドメインとする（例：`https://qrtoss.example`）。
+- Durable Objectsを使えるWorkersのプラン。無料枠の上限に達すると受付が止まるため、公開運用では有料プランを推奨する。採用するプランの上限と料金は実装時に確認する。[S41]
+- `wrangler`。リポジトリのdevDependencyとして正確な版を固定する。
+- DB、KV、R2、Redis、STUN、TURNは不要とする。
+
+#### 16.10.2 設定ファイル
+
+Cloudflare版の設定ファイル（`wrangler.jsonc`）は次を満たす。
+
+| 設定 | 値・条件 |
+| --- | --- |
+| `compatibility_date` | 固定した日付。更新は依存更新と同じ手順で確認してから行う |
+| `compatibility_flags` | `["no_web_socket_compression"]`。WebSocket圧縮を明示的に無効化し、本節の条件を変える他のフラグを設定しない[S46] |
+| `routes` | 公開originのホスト名を`custom_domain: true`で1つだけ指定する。ルートパス配備だけとする |
+| `workers_dev`、`preview_urls` | どちらも`false`。`*.workers.dev`やプレビューURLで公開しない |
+| `assets` | ビルド済みのWeb配信物のディレクトリ、`binding: "ASSETS"`、`run_worker_first: true`、`not_found_handling: "none"`[S40] |
+| `durable_objects.bindings` | `ROOM`（RoomDO）と`CAPACITY`（CapacityDO） |
+| `migrations` | 両クラスを`new_sqlite_classes`で宣言する。ストレージは使わない（第15.6.6節） |
+| `vars` | `PUBLIC_ORIGIN`、`MAX_ROOMS`、`MAX_SOCKETS`、`MAX_UNAUTHENTICATED_SOCKETS`、`MAX_SOCKETS_PER_IP`、`IPV6_PREFIX_LENGTH`、`LOG_LEVEL`。意味と既定値は第16.2節と同じ |
+| `observability` | `enabled: false`（Workers Logsを無効にする） |
+| `tail_consumers`、Logpush | 設定しない |
+| 上記以外のbinding | 設定しない（第15.6.6節） |
+
+Workerは、`PUBLIC_ORIGIN`が第16.2節の条件を満たさない場合、全要求に固定のエラーコードで500を返す。要求URLのoriginが`PUBLIC_ORIGIN`と一致しない場合は404を返す。Hostヘッダーから接続用URLを生成しない点はNode版と同じである。
+
+#### 16.10.3 レスポンスヘッダーとゾーンの設定
+
+- `run_worker_first: true`により全要求をWorkerで受け、静的assetも`ASSETS` bindingから取得した後にWorkerがヘッダーを付ける。第16.4節のヘッダーと、第10.1節の`Cache-Control`をNode版と同じ共通モジュールで付ける。`_headers`ファイルは使わない。
+- `/`と`/send`はビルド済みの該当HTMLへ明示的に対応付ける。存在しないパスは404とし、SPA向けの代替HTMLを返さない。
+- ゾーンの機能が配信内容を書き換えたりスクリプトを挿入したりしないよう、公開originでは次を無効にする：Rocket Loader、Email Address Obfuscation、Cloudflare Web Analyticsの自動挿入、Zaraz、その他HTMLを書き換える機能。これらは第16.4節のCSPと第2.1節のR18に反する。
+- Bot対策のチャレンジ（JavaScriptチャレンジ、Managed Challenge等）を`/api/v1/rooms`と`/ws`に適用しない。CLIはチャレンジを処理できない。
+- HSTSは第16.4節の方針どおりとし、WorkerのヘッダーかCloudflareの設定のどちらか一方で付ける。
+
+#### 16.10.4 ログと観測
+
+- Workers Logs、Logpush、Tail Workerを常時有効にしない。`wrangler tail`は障害調査時に短時間だけ使い、そのときも本文やcapabilityがログに出ないこと（第15.5節）を前提とする。[S45]
+- Cloudflareのゾーンの分析・セキュリティイベントは、接続元IP、パス、User-Agent等を自動で記録する。接続用URLの秘密はfragmentにあり、要求のURLに含まれないため（第9.2節）、これらに本文や鍵は含まれない。この記録の存在を公開する非保存方針に記載する。
+
+#### 16.10.5 更新
+
+- `wrangler deploy`で新版へ一括で切り替える。WorkerとDOが新版で再起動し、接続中の全roomが終了する（第3.3節）。運用手順にこのことを記載する。
+- Worker・RoomDO・CapacityDOの間の内部呼出しは、版の間の互換性を保証しない。このため、段階的デプロイ（gradual deployments）で新旧の版を並行して動かさない。
+- DOクラスの名前を変える、または削除する場合は、wranglerの`migrations`で宣言する。ストレージを使っていないため、移行するデータはない。
+
 ## 17. リポジトリとモジュールの分担
 
 ### 17.1 構成
@@ -1880,7 +2056,9 @@ npm workspacesとGo moduleを含む一つのリポジトリを参照構成とす
 | `apps/web/src/scanner/` | QR読取アダプター（qr-scanner）、カメラ、Worker、停止処理 |
 | `apps/web/src/content/` | 原文保持、URI分類、コピー、遷移 |
 | `apps/web/src/locales/{ja,en,es}.json` | Web UIの辞書 |
-| `apps/relay/` | HTTP、WSS、room Map、認証、期限、即時中継 |
+| `apps/relay/` | Node版：HTTP、WSS、room Map、認証、期限、即時中継のアダプター |
+| `packages/relay-core/` | 実行環境に依存しないroom処理（第15.6.9節）。Node版とCloudflare版で共有 |
+| `apps/relay-cloudflare/` | Cloudflare版：Worker、RoomDO、CapacityDO、`wrangler.jsonc` |
 | `packages/protocol/` | TS用の共有型、実行時schema、正規base64url、生成した定数・コード |
 | `protocol/` | 言語非依存の定義（`constants.json`、`error-codes.json`、close reasonの対応）とテストベクトル（`vectors/`） |
 | `cli/` | Go module（`go.mod`、`go.sum`） |
@@ -1934,6 +2112,9 @@ TypeScriptの`packages/protocol`はGoから参照できないため、言語非�
 | `npm run build` | 固定依存から本番webとrelayを生成 |
 | `npm start` | 本番relayと静的assetを起動 |
 | `docker compose up -d --build` | `.env`設定済み環境で自己ホストを起動 |
+| `npm run dev:cloudflare` | Cloudflare版をローカルのworkerd（`wrangler dev`）で起動 |
+| `npm run test:cloudflare` | relay統合試験と相互運用試験の対象をローカルのCloudflare版にして実行し、第18.7節の試験を行う |
+| `npm run deploy:cloudflare` | 本番buildの後、固定版の`wrangler`でCloudflare版を配備 |
 | `go test -race ./...`（`cli/`） | CLIの単体・状態機械・出力・暗号ベクトル試験 |
 | `gofmt -l .`（`cli/`） | Goの整形検査。出力があればCIを失敗させる |
 | `staticcheck ./...`（`cli/`） | Goのlint。CIと同じ固定版を使い、指摘があれば失敗させる |
@@ -2145,13 +2326,35 @@ fixtureの電話番号・メール・パス等は試験用であり、試験中�
 
 ### 18.6 CIと公開前の合格条件
 
-- 型検査、lint、全必須の単体・統合・E2E・相互運用試験、Web・CLIの辞書検証、`gofmt`・`staticcheck`・`go vet`・`go test -race`、本番build、共通定義の生成差分なしが成功している。
+- 型検査、lint、全必須の単体・統合・E2E・相互運用試験、Web・CLIの辞書検証、`gofmt`・`staticcheck`・`go vet`・`go test -race`、本番build、共通定義の生成差分なしが成功している。Cloudflare版を公開する場合は、第18.7節の試験も成功している。
 - 依存バージョン、Go module、イメージdigest、ライセンス、公開するソースcommitが確定している。`npm audit`等と`govulncheck`で既知脆弱性を確認している。
 - 本番CSPを有効にした状態で、QR生成・カメラ・Worker経路を含む読取・WSSが動く。
 - ダミー転送内容を使った非保存検査と、外部実行コードへの通信検査（Web・CLI）が成功している。
 - 実機試験、CLIの端末試験、自己ホスト試験の結果を保存している。実利用の本文・PSKを試験証跡へ残さない。
 - R01〜R18、C01〜C13を満たし、サポートするOS・ブラウザ・端末アプリ・スマホの組合せをリリース文書に記録している。未試験の条件を試験済みとして記載しない。
 - 暗号手順と信頼境界を、実装担当とは別のレビュー担当が確認している。独立した外部監査の有無は事実どおりに公表し、未実施なら監査済みと表示しない。
+
+### 18.7 Cloudflare版の試験
+
+Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第18.4節の相互運用試験、および次の試験に合格しなければならない。自動試験はローカルのworkerd（`wrangler dev`）で行い、TD03・TD11の一部・TD12・TD15は本番と同じ設定の検証用配備（別のカスタムドメイン）で行う。期限の境界は共有モジュールの仮想時計で検証し、実時間で待たない。
+
+| ID | 条件 | 合格条件 |
+| --- | --- | --- |
+| TD01 | `tests/relay`の統合試験を、対象をCloudflare版にして実行 | Node版と同じ結果になる |
+| TD02 | 相互運用試験（IX02、IX04、IX09を含む）をCloudflare版で実行 | Node版と同じ結果になる |
+| TD03 | receiverとsenderを別のネットワークから接続（検証用配備） | 同じRoomDOへ振り分けられ、ペアリング、送信、ackが成立する |
+| TD04 | `auth`以外の最初のメッセージ、5秒の時間切れ、バイナリ、過大なメッセージ、Origin不一致、subprotocolなし | 第10.3節どおりのclose codeまたはHTTPステータスで拒否し、RoomDOへ接続しない |
+| TD05 | 形式が正しく存在しないroomIdでの`auth`、閉じたroomへの`auth` | `PAIR_UNAVAILABLE`となり、認証失敗として数えられる。RoomDOに状態が残らない |
+| TD06 | 同じroomへの複数candidateの同時接続と、commitの競合 | `PEER_BUSY`とatomicなcommitがNode版と同じに動き、commitは1件だけ成立する |
+| TD07 | 片側の切断：クライアントの切断、RoomDO側からのclose、RoomDOへの内部接続の異常切断 | 相手側が第10.5節・第10.6節どおりの通知またはclose codeを受ける。1005・1006をクライアントへ送らない |
+| TD08 | RoomDOの再起動（ローカルでの強制終了）と新版の配備 | クライアントは切断を検出し、新しいroomで接続し直せる。古いroomは復活しない |
+| TD09 | `CREATED`のままreceiverが接続せず、RoomDOが退去した後の`auth` | `PAIR_UNAVAILABLE`となり、受信側が新しいroomを作り直す |
+| TD10 | `MAX_ROOMS`、WS数、同一IPの接続数、room作成と認証失敗のレートの超過、CapacityDOの再起動、CapacityDOの応答なし | 第15.6.7節どおりに503・429（固定秒数の`Retry-After`）で拒否する。CapacityDOの再起動で既存のroomを閉じず、件数が更新で回復する。応答がない場合は新規受付を拒否する |
+| TD11 | 非保存の確認 | 第15.6.6節の3点（ストレージAPI等の参照なし、ローカルの永続化ディレクトリが空、本番のDOストレージ使用量・操作数が0）を満たす。配備設定に禁止したbindingがない |
+| TD12 | `/`、`/send`、asset、API、404の各応答と、配信されたHTML | 第16.4節のヘッダーと第10.1節の`Cache-Control`がNode版と同じになる。配信されたHTML・JSがビルド成果物とバイト単位で一致し、ゾーンの機能によるスクリプトの挿入がない |
+| TD13 | `*.workers.dev`、プレビューURL、`PUBLIC_ORIGIN`と異なるホストへの要求 | 公開されていない、または404で拒否される |
+| TD14 | ダミー内容による一連の転送の後のWorker・DOの出力 | 本文、暗号文、capability、接続用URL、roomId、IPを含まない |
+| TD15 | 検証用配備に対して`--server`を指定したCLIで受信 | IX02と同じ結果になる |
 
 ## 19. 実装順序と完了の定義
 
@@ -2173,6 +2376,8 @@ fixtureの電話番号・メール・パス等は試験用であり、試験中�
 | 12 | I12 | Docker・proxy・自己ホスト・公開用文書 | 新規環境で同梱手順による配備が通る（T35） |
 | 13 | I13 | CLI配布：クロスビルド、SHA-256、署名、Homebrew tap、ランチャー | TC49〜TC57が通る |
 | 14 | I14 | 全端末・3言語・障害・相互運用試験、別担当レビュー | 第18章の必須項目が完了 |
+| 15 | I15 | room処理の共有モジュールへの分離（Node版は動作を変えない） | Node版で第18.1節・第18.4節の既存試験がすべて通る |
+| 16 | I16 | Cloudflare版：Worker、RoomDO、CapacityDO、`wrangler.jsonc`、配備手順 | TD01〜TD15が通る |
 
 I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる。I09はI01の後、Web側と並行して進められる。画面デザインはI01以後に並行できるが、通信メッセージやACK手順をUI側・CLI側だけで変更しない。互換性を変える場合はプロトコルversionとテストベクトルを更新する。
 
@@ -2228,6 +2433,18 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 | S34 | [Unicode UAX #11: East Asian Width][S34] | 曖昧幅（Ambiguous）の文字 |
 | S35 | [RFC 6454: The Web Origin Concept][S35] | originとそのASCII直列化 |
 | S36 | [DENSO WAVE: Information capacity and versions of QR Code][S36] | QRの版と格納容量 |
+| S37 | [Cloudflare: Durable Objects overview][S37] | roomごとの調整、IDごとに1つのインスタンス |
+| S38 | [Cloudflare: Use WebSockets (Durable Objects)][S38] | DOでのWebSocket、標準APIとHibernation API |
+| S39 | [Cloudflare: Lifecycle of a Durable Object][S39] | メモリからの退去、休止の条件 |
+| S40 | [Cloudflare: Workers static assets][S40] | `ASSETS` binding、`run_worker_first`、`not_found_handling` |
+| S41 | [Cloudflare: Durable Objects pricing][S41] | 実行時間とストレージの課金 |
+| S42 | [Cloudflare: Durable Objects limits][S42] | DOごとの処理量、メッセージサイズ |
+| S43 | [Cloudflare: Workers performance and timers][S43] | `Date.now()`がI/Oまで進まないこと |
+| S44 | [Cloudflare: HTTP request headers][S44] | `CF-Connecting-IP` |
+| S45 | [Cloudflare: Workers Logs][S45] | Workers Logsの記録内容と無効化 |
+| S46 | [Cloudflare: Compatibility flags — WebSocket Compression][S46] | 現行日付では圧縮が既定で有効、無効化フラグと空の交渉ヘッダー |
+
+S37〜S45は1.1.0の改訂（2026-11-18）で追加し、Cloudflare版の実装時に公式文書のURLと内容を確認した。標準WebSocket API・休止時のメモリ消失・SQLite DOのプラン条件・時刻のI/O依存・ASSETS binding・Workers Logsの設定を確認済み。本番配備に依存する条件の検証状況は`docs/validation.md`に記載する。
 
 [S01]: https://nodejs.org/en/about/previous-releases
 [S02]: https://github.com/websockets/ws
@@ -2265,6 +2482,16 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 [S34]: https://www.unicode.org/reports/tr11/
 [S35]: https://www.rfc-editor.org/rfc/rfc6454
 [S36]: https://www.qrcode.com/en/about/version.html
+[S37]: https://developers.cloudflare.com/durable-objects/
+[S38]: https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+[S39]: https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/
+[S40]: https://developers.cloudflare.com/workers/static-assets/
+[S41]: https://developers.cloudflare.com/durable-objects/platform/pricing/
+[S42]: https://developers.cloudflare.com/durable-objects/platform/limits/
+[S43]: https://developers.cloudflare.com/workers/runtime-apis/performance/
+[S44]: https://developers.cloudflare.com/fundamentals/reference/http-headers/
+[S45]: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+[S46]: https://developers.cloudflare.com/workers/configuration/compatibility-flags/#websocket-compression
 
 ## 付録A. 暗号プロトコルとCLI出力の公開テストベクトル
 
@@ -2390,3 +2617,4 @@ No.1とNo.2のJSON Linesのバイト列（16進）：
 | 版 | 日付 | 内容 |
 | --- | --- | --- |
 | 1.0.0 | 2026-11-15 | 初版。サービス名をqrtossとする |
+| 1.1.0 | 2026-11-18 | Cloudflare WorkersとDurable Objectsで動く中継サーバー（Cloudflare版）を追加（第3.4節、第15.6節、第16.10節、第18.7節、I15・I16）。クライアントとの通信形式と暗号方式は変更しない |

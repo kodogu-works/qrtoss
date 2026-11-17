@@ -43,6 +43,10 @@ QRTOSS_BASE_PATH=/qrtoss/ npm run build
 
 Mantén `PUBLIC_ORIGIN` como origen sin ruta, por ejemplo `https://myserver.example`. Apache debe quitar `/qrtoss` al reenviar HTTP y WebSocket a la aplicación. Consulta la [configuración de Apache para una subruta](docs/self-hosting.md#browser-deployment-under-an-apache-subpath). La ruta se fija al compilar y su valor predeterminado es `/`. La CLI y la configuración incluida de Docker Compose/Caddy siguen usando la raíz del origen.
 
+## Alojamiento en Cloudflare
+
+El servidor también funciona con Cloudflare Workers y Durable Objects, usando el mismo protocolo de navegador y CLI. Configura el dominio y `PUBLIC_ORIGIN` en `wrangler.jsonc`, ejecuta `npm run test:cloudflare` y publica con `npm run deploy:cloudflare`. Para workerd local, usa `npm run dev:cloudflare`. Consulta [la configuración, privacidad y operación en Cloudflare](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
+
 ## Cliente de línea de comandos
 
 ```sh

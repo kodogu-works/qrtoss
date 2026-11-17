@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRelay } from '../../server/src/index.ts';
+import { createTestRelay } from '../helpers/relay.ts';
 import { pair } from './peer.ts';
 import { randomToken, encodeText, decodeText } from '../../packages/protocol/src/index.ts';
 test('real relay: mutual proof, ready, mode, Unicode transfer, ack and ack_seen', async () => {
-  const relay = createRelay({ publicOrigin: 'http://127.0.0.1:18971', allowHttpLoopback: true });
+  const relay = await createTestRelay({
+    publicOrigin: 'http://127.0.0.1:18971',
+    allowHttpLoopback: true,
+  });
   await relay.listen(18971);
   let peers: Awaited<ReturnType<typeof pair>> | undefined;
   try {

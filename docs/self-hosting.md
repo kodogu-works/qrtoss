@@ -110,3 +110,66 @@ Back up deployment configuration and TLS certificate volumes as needed; there is
 ## Local production-like tests
 
 `npm run dev` permits only loopback HTTP. For phone tests use the same HTTPS reverse proxy setup as production, with certificates trusted by the phone. For automated CLI interoperability, tests use an isolated HTTPS CA/transport; the shipped CLI has no TLS-verification bypass.
+
+## Cloudflare Workers and Durable Objects
+
+The Cloudflare relay uses the same browser and CLI protocol as the Node relay. A Worker accepts HTTP and WebSocket requests, each room has one RoomDO, and a single CapacityDO manages admission. Both relays use `packages/relay-core/src/` for pairing, commit, expiry, heartbeat, message limits and ciphertext forwarding. Cloudflare deployments use the origin root; subpath builds are rejected by the Cloudflare commands.
+
+Use Node.js 26, `npm ci`, a Cloudflare account with Durable Objects available, and a domain managed by Cloudflare. Wrangler is pinned in `devDependencies`; a global installation is unnecessary. Check the current [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits/) before choosing a plan. Standard WebSockets keep rooms in memory and incur duration charges while connected; this implementation deliberately avoids hibernation.
+
+For local development:
+
+```sh
+npm ci
+npm run dev:cloudflare
+```
+
+Open `https://127.0.0.1:8787`. Wrangler uses a local development certificate, which the browser may require you to trust. This loopback origin is for desktop development; real-phone tests require a reachable HTTPS deployment with a certificate trusted by the phone. The command builds the Web assets, then starts local workerd through Wrangler. Web asset changes require rebuilding and restarting. It overrides `PUBLIC_ORIGIN` only for this local command and disables Wrangler's route-based origin inference so the Worker sees the actual loopback HTTPS origin.
+
+Before deploying, edit `wrangler.jsonc`:
+
+- Set `vars.PUBLIC_ORIGIN` to your exact HTTPS origin without a trailing slash.
+- Set the one `routes[].pattern` to that origin's hostname, with `custom_domain: true`.
+- Review the numeric limits below and keep `workers_dev: false`, `preview_urls: false`, `observability.enabled: false`, and `compatibility_flags: ["no_web_socket_compression"]`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MAX_ROOMS` | `1000` | Live room leases |
+| `MAX_SOCKETS` | `2200` | All WebSocket leases |
+| `MAX_UNAUTHENTICATED_SOCKETS` | `100` | WebSockets awaiting authentication |
+| `MAX_SOCKETS_PER_IP` | `60` | Concurrent WebSockets per normalized IP key |
+| `IPV6_PREFIX_LENGTH` | `64` | IPv6 rate/count aggregation prefix, 1–128 |
+| `LOG_LEVEL` | `warn` | Reserved for fixed, non-sensitive events; the implementation emits no application logs |
+
+The Cloudflare relay uses `CF-Connecting-IP`; `TRUST_PROXY_CIDRS` and `X-Forwarded-For` are Node settings and have no effect here. IPv4-mapped IPv6 addresses share their IPv4 key. Creation and authentication failure buckets use the same key as socket counts, with at most 4,096 inactive-expiring IP records. IP socket and creation limits return 429 with a fixed `Retry-After: 6`; global capacity returns 503. Room and socket leases renew every 60 seconds and expire after 120 seconds without renewal. CapacityDO restart temporarily resets counts; renewal registers existing rooms and sockets again, even above admission limits. A CapacityDO failure or a two-second RPC timeout rejects new admission without closing existing rooms.
+
+Run the local checks before deployment:
+
+```sh
+npm run typecheck
+npm run check:cloudflare
+npm test
+npm run test:cloudflare
+# Optional local packaging check; does not upload or deploy:
+WRANGLER_SEND_METRICS=false npx wrangler deploy --dry-run --outdir dist/cloudflare
+```
+
+`test:cloudflare` builds root Web assets and runs the common relay and TypeScript/Go interoperability tests against real local workerd through pinned Miniflare. Additional tests cover routing before authentication, concurrent candidates, DO restarts, capacity failures and lease recovery, security headers, exact asset bytes, alternate hosts, logs and empty local SQLite tables. The compression test connects directly to workerd's Worker socket: the outer Miniflare/Wrangler development proxy can negotiate its own compression independently of the deployed Worker's setting. Virtual clocks and control RPCs exist only in `tests/cloudflare/worker.ts`; `wrangler.jsonc` points to the production entry point, which has none of them.
+
+Authenticate Wrangler with `npx wrangler login` or an appropriately scoped `CLOUDFLARE_API_TOKEN`. Then deploy explicitly:
+
+```sh
+npm run deploy:cloudflare
+```
+
+This validates the configuration, builds the Web assets and runs the pinned Wrangler deployment. Keep authentication outside source control. Do not use gradual deployments: the internal Worker/DO calls have no version compatibility guarantee. Deploying a new version or restarting a RoomDO invalidates its rooms and active transfers; users must pair with a new QR. A preexisting room cannot be resumed. Keep DO class names stable, and add a Wrangler migration when renaming or removing one.
+
+All requests pass through the Worker, including assets. HTML/API/404 responses have the shared security headers and `Cache-Control: no-store`; hashed assets can be cached immutably. `/` and `/send` map to their built HTML explicitly; missing paths receive 404. Do not introduce `_headers`, SPA fallbacks, extra public hostnames, flags enabling WebSocket compression, or additional service/data bindings. WebSocket compression is explicitly disabled with `no_web_socket_compression` and empty extension negotiation headers; modern compatibility dates otherwise enable it automatically. See [Cloudflare compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#websocket-compression). The two `new_sqlite_classes` migration entries provision DO namespaces but the application never calls their storage or Alarm APIs.
+
+At the zone level, disable Rocket Loader, Email Address Obfuscation, automatic Cloudflare Web Analytics injection, Zaraz and other HTML/script rewriting for this hostname. Disable JavaScript/Managed Challenges on `/api/v1/rooms` and `/ws`, since the CLI cannot complete them. Let the Worker supply HSTS rather than adding another HSTS policy at the zone. Keep Workers Logs, Logpush and Tail Workers off. Use `wrangler tail` only briefly for investigation; never add raw requests, exceptions, capabilities, identifiers or message bodies to logs.
+
+The Cloudflare hosting trust boundary includes Cloudflare's TLS termination and delivery of HTML/JavaScript. Endpoints encrypt content, but Cloudflare can observe IP addresses, timings, ciphertext sizes and traffic volume. Zone analytics and security events may record request metadata such as IP, path and User-Agent even with Workers Logs disabled. Disclose this distinction in your privacy policy; application non-persistence does not mean the hosting provider collects no metadata.
+
+The local non-persistence test checks all persisted SQLite tables and scans the files for synthetic transfer secrets. workerd can create empty namespace databases, WAL/SHM files and empty internal alarm metadata without application writes; file existence alone does not establish transfer persistence. Before public operation, also confirm **zero DO storage usage and storage operations** in the deployed account. Do not add KV, D1, R2, Queues, Cache API, Analytics Engine, Hyperdrive, attachment serialization or hibernation APIs.
+
+Use a separate custom domain with production-equivalent settings for manual acceptance. Verify receiver and sender on separate networks, a real `qrtoss --server https://your-host` transfer, deployment/restart recovery, zero storage metrics, security headers on all response classes, exact deployed HTML/JS bytes, and that workers.dev/preview/wrong hosts are disabled or return 404. These account, network and zone checks are not established by local workerd tests. See specification TD03, TD08, TD11, TD12 and TD15 and [validation status](validation.md).

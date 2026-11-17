@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { createRelay } from '../../server/src/index.ts';
+import { createTestRelay } from '../helpers/relay.ts';
 
 const ORIGIN = 'https://qrtoss.test';
 const token = (n = 32) => randomBytes(n).toString('base64url');
@@ -46,7 +47,7 @@ class Peer {
   }
 }
 async function setup(options: Parameters<typeof createRelay>[0] = { publicOrigin: ORIGIN }) {
-  const relay = createRelay(options);
+  const relay = await createTestRelay(options);
   const url = await relay.listen();
   const create = async (body = '{"v":1}', origin = ORIGIN) =>
     fetch(url + '/api/v1/rooms', {
@@ -96,6 +97,7 @@ test('HTTP routes enforce exact origin, bounded schema and safe headers', async 
   assert.equal((await create('{"v":1}', 'https://evil.test')).status, 403);
   assert.equal((await create('{"v":1,"psk":"secret"}')).status, 400);
   assert.equal((await create('{"v":2}')).status, 400);
+  assert.equal((await create('"MESSAGE_TOO_LARGE"')).status, 400);
   const res = await create();
   assert.equal(res.status, 201);
   assert.equal(res.headers.get('cache-control'), 'no-store');
@@ -123,7 +125,7 @@ test('relay forwards opaque envelopes only after mutual ready exchange; closes o
   assert.equal(forwarded.peer, peer);
   cipher(sender, 's2r', '1');
   assert.equal((await receiver.next('room.closed')).code, 'PROTOCOL_ERROR');
-  assert.equal(relay.stats().rooms, 0);
+  assert.equal((await relay.stats()).rooms, 0);
 });
 
 test('candidate rejection preserves pairing QR and existing receiver', async (t) => {
@@ -145,7 +147,7 @@ test('candidate rejection preserves pairing QR and existing receiver', async (t)
   assert.equal((await extra.next('error')).code, 'PEER_BUSY');
   r.send('pair.reject', { peer, code: 'AUTH_FAILED' });
   assert.equal((await r.next('pair.candidate_closed')).code, 'AUTH_FAILED');
-  assert.equal(relay.stats().rooms, 1);
+  assert.equal((await relay.stats()).rooms, 1);
   const replacement = new Peer(url);
   await replacement.open();
   replacement.send('auth', { role: 'sender', room: room.room, cap: room.senderJoinCap });
@@ -185,7 +187,7 @@ test('pairing deadlines use monotonic time and do not let late auth revive a roo
   await r.open();
   r.send('auth', { role: 'receiver', room: room.room, cap: room.receiverCap });
   assert.equal((await r.next('error')).code, 'PAIR_UNAVAILABLE');
-  assert.equal(relay.stats().rooms, 0);
+  assert.equal((await relay.stats()).rooms, 0);
 });
 
 test('committed QR expires independently from active session; heartbeat does not extend idle', async (t) => {
@@ -205,7 +207,7 @@ test('committed QR expires independently from active session; heartbeat does not
     } else break;
   }
   assert.equal((await receiver.next('room.closed')).code, 'SESSION_EXPIRED');
-  assert.equal(relay.stats().rooms, 0);
+  assert.equal((await relay.stats()).rooms, 0);
   assert.ok(peer);
 });
 
@@ -262,9 +264,9 @@ test('auth timeout is checked on late traffic as well as periodic sweep', async 
   const stale = new Peer(url);
   await stale.open();
   clock = 10000;
-  relay.sweep();
+  await relay.sweep();
   assert.equal((await stale.next('error')).code, 'PAIR_UNAVAILABLE');
-  assert.equal(relay.stats().rooms, 1);
+  assert.equal((await relay.stats()).rooms, 1);
 });
 
 test('late commit cannot revive an expired candidate', async (t) => {
@@ -285,7 +287,7 @@ test('late commit cannot revive an expired candidate', async (t) => {
   r.send('pair.commit', { peer });
   assert.equal((await r.next('pair.candidate_closed')).code, 'PAIR_TIMEOUT');
   // An old peer's commit is itself invalid; use sweep to expire without stale traffic in normal clients.
-  assert.equal(relay.stats().rooms, 0);
+  assert.equal((await relay.stats()).rooms, 0);
 });
 
 test('late candidate timeout via sweep preserves receiver and enables new candidate', async (t) => {
@@ -303,9 +305,9 @@ test('late candidate timeout via sweep preserves receiver and enables new candid
   await s.next('auth.ok');
   await r.next('pair.candidate');
   clock = 10000;
-  relay.sweep();
+  await relay.sweep();
   assert.equal((await r.next('pair.candidate_closed')).code, 'PAIR_TIMEOUT');
-  assert.equal(relay.stats().rooms, 1);
+  assert.equal((await relay.stats()).rooms, 1);
   const replacement = new Peer(url);
   await replacement.open();
   replacement.send('auth', { role: 'sender', room: room.room, cap: room.senderJoinCap });
@@ -331,6 +333,22 @@ test('binary, unknown field, double auth and overlarge control messages are reje
       (await r.next('error')).code,
       variant === 'overlarge' ? 'MESSAGE_TOO_LARGE' : 'PROTOCOL_ERROR',
     );
+  }
+});
+
+test('transport-rejected binary and oversized traffic preserve the room failure at the peer', async (t) => {
+  const { relay, url, create } = await setup();
+  t.after(() => relay.close());
+  for (const [payload, code, closeCode] of [
+    [Buffer.from('{}'), 'PROTOCOL_ERROR', 1008],
+    ['x'.repeat(32769), 'MESSAGE_TOO_LARGE', 1009],
+  ] as const) {
+    const room = (await (await create()).json()) as Message;
+    const { receiver, sender } = await pair(url, room);
+    const closed = once(sender.ws, 'close');
+    sender.ws.send(payload);
+    assert.equal((await receiver.next('room.closed')).code, code);
+    assert.equal((await closed)[0], closeCode);
   }
 });
 
@@ -386,7 +404,7 @@ test('sockets are released on shutdown and IPv4 trusted CIDR config validates', 
   const start = Date.now();
   await relay.close();
   assert.ok(Date.now() - start < 5000);
-  assert.equal(relay.stats().rooms, 0);
+  assert.equal((await relay.stats()).rooms, 0);
 });
 
 test('commit consumes join capability and ready deadline cannot be extended by heartbeat', async (t) => {
@@ -405,7 +423,7 @@ test('commit consumes join capability and ready deadline cannot be extended by h
   await receiver.next('hb.pong');
   await sender.next('hb.pong');
   clock = 10000;
-  relay.sweep();
+  await relay.sweep();
   assert.equal((await receiver.next('room.closed')).code, 'READY_TIMEOUT');
   assert.equal((await sender.next('room.closed')).code, 'READY_TIMEOUT');
 });
@@ -418,7 +436,7 @@ test('commit before the QR deadline permits ready exchange after the deadline', 
   clock = 299999;
   const { receiver, sender, peer, cipher } = await pair(url, room, false);
   clock = 300001;
-  relay.sweep();
+  await relay.sweep();
   cipher(sender, 's2r', '0');
   await receiver.next('cipher');
   cipher(receiver, 'r2s', '0');
@@ -428,7 +446,7 @@ test('commit before the QR deadline permits ready exchange after the deadline', 
   await sender.next('pair.active');
   cipher(sender, 's2r', '1');
   assert.equal((await receiver.next('cipher')).seq, '1');
-  assert.equal(relay.stats().rooms, 1);
+  assert.equal((await relay.stats()).rooms, 1);
 });
 
 test('ACTIVE is forbidden before both sequence-zero envelopes are relayed', async (t) => {
@@ -477,7 +495,7 @@ test('candidate can end normally without closing receiver or consuming QR', asyn
   sender.send('room.close', { reason: 'user_end' });
   assert.equal((await receiver.next('pair.candidate_closed')).code, 'PEER_CLOSED');
   assert.equal((await closed)[0], 1000);
-  assert.equal(relay.stats().rooms, 1);
+  assert.equal((await relay.stats()).rooms, 1);
 });
 
 test('candidate failure sends exactly one error and releases the candidate', async (t) => {

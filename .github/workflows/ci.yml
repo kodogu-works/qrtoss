@@ -39,9 +39,15 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm run format:check
+      - run: npm run check:cloudflare
       - run: npm run check:i18n
       - run: npm test
       - run: npm run build
+      - run: npm run test:cloudflare
+      - name: Package Cloudflare Worker without deployment
+        run: npx wrangler deploy --dry-run --outdir dist/cloudflare
+        env:
+          WRANGLER_SEND_METRICS: "false"
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
       - run: go test -race ./...

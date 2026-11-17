@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src/**/*.ts", "../../packages/relay-core/**/*.ts", "../../tests/cloudflare/worker.ts"],
+  "exclude": []
+}

@@ -59,7 +59,19 @@ test('IP normalization handles compressed, expanded, scoped and mapped IPv6', ()
     assert.equal(normalizeIp(ip), '192.0.2.1');
     assert.equal(key(ip), '192.0.2.1');
   }
-  for (const ip of ['', 'unknown', '::::', '2001:db8::g', '127.1', '192.0.2.999', '192.0.2.1:80']) {
+  for (const ip of [
+    '',
+    'unknown',
+    '::::',
+    '2001:db8::g',
+    '127.1',
+    '192.0.2.999',
+    '192.0.2.1:80',
+    '::1]/path',
+    '::1]@example.com',
+    'fe80::1%zone/path',
+    'fe80::1%',
+  ]) {
     assert.equal(normalizeIp(ip), undefined);
   }
   for (const prefix of [0, -1, 129, 56.5, NaN]) {

@@ -11,6 +11,9 @@ cli/qrtoss
 cli/dist
 artifacts
 .cache
+.wrangler
+.dev.vars
+.dev.vars.*
 .codex
 .agents
 .aws
