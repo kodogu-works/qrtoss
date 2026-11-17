@@ -2,6 +2,12 @@
 
 [English](README.md) · [日本語](README.ja.md)
 
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-26%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Author](https://img.shields.io/badge/author-Synge%20Todo-blue)](https://github.com/wistaria)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.md)
+
 Transfiere el contenido de un código QR desde el teléfono a otro navegador o a un terminal. Sin cuenta, aplicación instalada ni conexión a la misma red Wi-Fi. Escanea el QR de conexión con la cámara del teléfono, abre la página de envío, escanea el QR deseado, revisa el texto y confirma el envío.
 
 El navegador receptor puede mostrar el texto o abrir direcciones HTTP(S) en la misma pestaña. El cliente de línea de comandos recibe **un solo elemento**, lo escribe en stdout y finaliza; el QR de conexión y los mensajes se muestran en stderr. La interfaz está disponible en inglés, japonés y español.
