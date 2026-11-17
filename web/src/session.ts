@@ -9,7 +9,8 @@ import {
   type AppMessage,
   type Keys,
 } from '../../packages/protocol/src/index';
-import errorCodes from '../../protocol/error-codes.json';
+import { validateControlMessage } from '../../packages/protocol/src/control';
+import { exact } from '../../packages/protocol/src/validation';
 import { createAppPaths, type AppPaths } from './paths';
 
 export type Mode = 'auto_open' | 'display_only' | 'stdout';
@@ -22,68 +23,13 @@ export interface SessionHooks {
 }
 type Control = Record<string, unknown> & { v: number; type: string };
 const time = () => performance.now();
-const schema: Record<string, string[]> = {
-  'pair.candidate': ['peer', 'serverTime', 'candidateExpiresAt'],
-  'pair.challenge': ['peer', 'rNonce'],
-  'pair.proof': ['peer', 'sNonce', 'proof'],
-  'pair.committed': ['peer', 'serverTime', 'readyExpiresAt', 'idleExpiresAt'],
-  'pair.confirm': ['peer', 'proof'],
-  'pair.active': ['peer', 'serverTime', 'idleExpiresAt'],
-  'pair.candidate_closed': ['peer', 'code'],
-  'room.touched': ['peer', 'serverTime', 'idleExpiresAt'],
-  'room.closed': ['code'],
-  error: ['code', 'scope'],
-  'hb.pong': ['id', 'serverTime'],
-};
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('PROTOCOL_ERROR');
   return value as Record<string, unknown>;
 }
-function exact(value: Record<string, unknown>, fields: string[]): void {
-  if (Object.keys(value).length !== fields.length || fields.some((key) => !(key in value)))
-    throw new Error('PROTOCOL_ERROR');
-}
-export function parseControl(value: unknown): Control {
-  const m = object(value);
-  if (m.v !== 1 || typeof m.type !== 'string') throw new Error('PROTOCOL_ERROR');
-  if (m.type === 'auth.ok') {
-    if (m.role !== 'receiver' && m.role !== 'sender') throw new Error('PROTOCOL_ERROR');
-    exact(m, [
-      'v',
-      'type',
-      'role',
-      'room',
-      'serverTime',
-      'pairingExpiresAt',
-      ...(m.role === 'sender' ? ['peer', 'candidateExpiresAt'] : []),
-    ]);
-    decodeBase64(String(m.room), 16);
-  } else {
-    const fields = schema[m.type];
-    if (!fields) throw new Error('PROTOCOL_ERROR');
-    exact(m, ['v', 'type', ...fields]);
-  }
-  for (const field of [
-    'serverTime',
-    'pairingExpiresAt',
-    'candidateExpiresAt',
-    'readyExpiresAt',
-    'idleExpiresAt',
-  ]) {
-    if (field in m && (!Number.isSafeInteger(m[field]) || Number(m[field]) < 0))
-      throw new Error('PROTOCOL_ERROR');
-  }
-  if ('peer' in m) decodeBase64(String(m.peer), 16);
-  for (const field of ['rNonce', 'sNonce', 'proof'])
-    if (field in m) decodeBase64(String(m[field]), 32);
-  if ('code' in m && (typeof m.code !== 'string' || !errorCodes.includes(m.code)))
-    throw new Error('PROTOCOL_ERROR');
-  if (m.type === 'error' && !['socket', 'candidate', 'room'].includes(String(m.scope)))
-    throw new Error('PROTOCOL_ERROR');
-  if ('id' in m && (!Number.isInteger(m.id) || Number(m.id) < 0 || Number(m.id) > 2147483647))
-    throw new Error('PROTOCOL_ERROR');
-  return m as Control;
+export function parseControl(value: unknown, role: 'receiver' | 'sender' = 'receiver'): Control {
+  return validateControlMessage(value, role);
 }
 
 /** One socket/room generation. No reconnection or secret persistence. */
@@ -319,7 +265,7 @@ export class Session {
       await this.hooks.message(app);
       return;
     }
-    const m = parseControl(raw);
+    const m = parseControl(raw, this.role);
     if (m.type === 'auth.ok') {
       if (m.role !== this.role || m.room !== this.room || this.heartbeat)
         throw new Error('PROTOCOL_ERROR');

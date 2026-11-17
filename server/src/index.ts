@@ -5,7 +5,10 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { WebSocketServer, WebSocket } from 'ws';
-import C from '../../protocol/constants.json' with { type: 'json' };
+import { C } from '../../packages/protocol/src/constants.ts';
+import { validateControlMessage } from '../../packages/protocol/src/control.ts';
+import type { ControlMessage } from '../../packages/protocol/src/control.generated.ts';
+import { hasExactFields, validateEnvelope } from '../../packages/protocol/src/validation.ts';
 import closeReasons from '../../protocol/close-reasons.json' with { type: 'json' };
 import { ipLimitKey, normalizeIp } from './ip.ts';
 
@@ -58,16 +61,6 @@ export interface RelayOptions {
 }
 const random = (n: number) => randomBytes(n).toString('base64url');
 const digest = (s: string) => createHash('sha256').update(s).digest();
-function b64(value: unknown, bytes?: number): value is string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) return false;
-  const decoded = Buffer.from(value, 'base64url');
-  return (
-    (bytes === undefined || decoded.length === bytes) && decoded.toString('base64url') === value
-  );
-}
-function exact(o: Json, keys: string[]) {
-  return Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
-}
 function bucket(at: number, tokens: number): Bucket {
   return { tokens, at };
 }
@@ -218,7 +211,7 @@ export function createRelay(options: RelayOptions) {
       } catch {
         return reply(res, 400, 'PROTOCOL_ERROR');
       }
-      if (!body || typeof body !== 'object' || Array.isArray(body) || !exact(body as Json, ['v']))
+      if (!body || typeof body !== 'object' || Array.isArray(body) || !hasExactFields(body, ['v']))
         return reply(res, 400, 'PROTOCOL_ERROR');
       if ((body as Json).v !== 1) return reply(res, 400, 'VERSION_UNSUPPORTED');
       sweep();
@@ -391,14 +384,7 @@ export function createRelay(options: RelayOptions) {
     }
     for (const [ip, value] of ips) if (t - value.at >= 60000) ips.delete(ip);
   }
-  function auth(c: Client, m: Json) {
-    if (
-      !exact(m, ['v', 'type', 'role', 'room', 'cap']) ||
-      !['receiver', 'sender'].includes(String(m.role)) ||
-      !b64(m.room, 16) ||
-      !b64(m.cap, 32)
-    )
-      return fail(c);
+  function auth(c: Client, m: Extract<ControlMessage, { type: 'auth' }>) {
     const limits = ipRecord(c.ip);
     take(limits.failures, now(), 20 / 60, 20, 0);
     if (limits.failures.tokens < 1) return fail(c, 'RATE_LIMITED');
@@ -466,29 +452,29 @@ export function createRelay(options: RelayOptions) {
     if (m.v !== 1) return fail(c, 'VERSION_UNSUPPORTED');
     if (m.type !== 'cipher' && length > C.MAX_CONTROL_MESSAGE_BYTES)
       return fail(c, 'MESSAGE_TOO_LARGE', 1009);
-    if (!c.role) return m.type === 'auth' ? auth(c, m) : fail(c);
+    if (!c.role) {
+      try {
+        const control = validateControlMessage(m, 'server');
+        return control.type === 'auth' ? auth(c, control) : fail(c);
+      } catch {
+        return fail(c);
+      }
+    }
     const room = c.room;
     if (!room || !live(room) || c.room !== room) return;
+    try {
+      if (m.type === 'cipher') validateEnvelope(m);
+      else validateControlMessage(m, 'server');
+    } catch {
+      return fail(c);
+    }
     if (m.type === 'hb.ping') {
-      if (
-        !exact(m, ['v', 'type', 'id']) ||
-        !Number.isInteger(m.id) ||
-        (m.id as number) < 0 ||
-        (m.id as number) > 2147483647 ||
-        (m.id as number) <= c.lastPing
-      )
-        return fail(c);
+      if ((m.id as number) <= c.lastPing) return fail(c);
       c.lastPing = m.id as number;
       c.heartbeat = now();
       return void notification(c, 'hb.pong', { id: m.id, serverTime: wallNow() });
     }
     if (m.type === 'room.close') {
-      if (
-        !exact(m, ['v', 'type', 'reason']) ||
-        typeof m.reason !== 'string' ||
-        !Object.hasOwn(closeReasons, m.reason)
-      )
-        return fail(c);
       const codes: Record<string, string> = closeReasons;
       if (c.role === 'sender' && room.state === 'CANDIDATE')
         return closeCandidate(room, 'PEER_CLOSED', 1000, false);
@@ -496,23 +482,15 @@ export function createRelay(options: RelayOptions) {
     }
     if (m.type === 'cipher') {
       if (
-        !exact(m, ['v', 'type', 'room', 'peer', 'dir', 'seq', 'ct']) ||
         !['COMMITTED', 'ACTIVE'].includes(room.state) ||
         m.room !== room.id ||
         m.peer !== room.peer ||
-        m.dir !== (c.role === 'sender' ? 's2r' : 'r2s') ||
-        typeof m.seq !== 'string' ||
-        !/^(0|[1-9][0-9]{0,19})$/.test(m.seq) ||
-        !b64(m.ct)
+        m.dir !== (c.role === 'sender' ? 's2r' : 'r2s')
       )
         return fail(c);
-      const ciphertext = Buffer.from(m.ct, 'base64url');
-      const seq = BigInt(m.seq),
+      const seq = BigInt(m.seq as string),
         dir = m.dir as 's2r' | 'r2s';
       if (
-        ciphertext.length < 16 ||
-        ciphertext.length > C.MAX_PLAINTEXT_BYTES + 16 ||
-        seq > 18446744073709551615n ||
         seq !== room.seq[dir] + 1n ||
         !room.confirm ||
         (room.state === 'COMMITTED' && seq !== 0n) ||
@@ -524,44 +502,22 @@ export function createRelay(options: RelayOptions) {
       room.seq[dir] = seq;
       return void send(target, m);
     }
-    if (m.peer !== room.peer || !b64(m.peer, 16)) return fail(c);
+    if (m.peer !== room.peer) return fail(c);
     switch (m.type) {
       case 'pair.challenge':
-        if (
-          !exact(m, ['v', 'type', 'peer', 'rNonce']) ||
-          c.role !== 'receiver' ||
-          room.state !== 'CANDIDATE' ||
-          room.challenge ||
-          !b64(m.rNonce, 32)
-        )
-          return fail(c);
+        if (c.role !== 'receiver' || room.state !== 'CANDIDATE' || room.challenge) return fail(c);
         room.challenge = true;
         return void send(room.sender, m);
       case 'pair.proof':
-        if (
-          !exact(m, ['v', 'type', 'peer', 'sNonce', 'proof']) ||
-          c.role !== 'sender' ||
-          room.state !== 'CANDIDATE' ||
-          !room.challenge ||
-          room.proof ||
-          !b64(m.sNonce, 32) ||
-          !b64(m.proof, 32)
-        )
+        if (c.role !== 'sender' || room.state !== 'CANDIDATE' || !room.challenge || room.proof)
           return fail(c);
         room.proof = true;
         return void send(room.receiver, m);
       case 'pair.reject':
-        if (
-          !exact(m, ['v', 'type', 'peer', 'code']) ||
-          c.role !== 'receiver' ||
-          room.state !== 'CANDIDATE' ||
-          m.code !== 'AUTH_FAILED'
-        )
-          return fail(c);
+        if (c.role !== 'receiver' || room.state !== 'CANDIDATE') return fail(c);
         return closeCandidate(room, 'AUTH_FAILED');
       case 'pair.commit': {
         if (
-          !exact(m, ['v', 'type', 'peer']) ||
           c.role !== 'receiver' ||
           room.state !== 'CANDIDATE' ||
           !room.proof ||
@@ -585,19 +541,11 @@ export function createRelay(options: RelayOptions) {
         return;
       }
       case 'pair.confirm':
-        if (
-          !exact(m, ['v', 'type', 'peer', 'proof']) ||
-          c.role !== 'receiver' ||
-          room.state !== 'COMMITTED' ||
-          room.confirm ||
-          !b64(m.proof, 32)
-        )
-          return fail(c);
+        if (c.role !== 'receiver' || room.state !== 'COMMITTED' || room.confirm) return fail(c);
         room.confirm = true;
         return void send(room.sender, m);
       case 'pair.active': {
         if (
-          !exact(m, ['v', 'type', 'peer']) ||
           c.role !== 'receiver' ||
           room.state !== 'COMMITTED' ||
           room.seq.s2r !== 0n ||
@@ -611,8 +559,7 @@ export function createRelay(options: RelayOptions) {
         return;
       }
       case 'room.touch': {
-        if (!exact(m, ['v', 'type', 'peer']) || c.role !== 'receiver' || room.state !== 'ACTIVE')
-          return fail(c);
+        if (c.role !== 'receiver' || room.state !== 'ACTIVE') return fail(c);
         room.idle = now() + C.SESSION_IDLE_SECONDS * 1000;
         const fields = { peer: room.peer, serverTime: wallNow(), idleExpiresAt: epoch(room.idle) };
         notification(room.receiver, 'room.touched', fields);

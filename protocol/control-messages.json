@@ -1,0 +1,282 @@
+{
+  "version": 1,
+  "fieldTypes": {
+    "token16": {
+      "kind": "base64url",
+      "bytes": 16
+    },
+    "token32": {
+      "kind": "base64url",
+      "bytes": 32
+    },
+    "timestamp": {
+      "kind": "integer",
+      "min": 0,
+      "max": 9007199254740991
+    },
+    "heartbeatId": {
+      "kind": "integer",
+      "min": 0,
+      "max": 2147483647
+    },
+    "role": {
+      "kind": "enum",
+      "values": [
+        "receiver",
+        "sender"
+      ]
+    },
+    "receiver": {
+      "kind": "enum",
+      "values": [
+        "receiver"
+      ]
+    },
+    "sender": {
+      "kind": "enum",
+      "values": [
+        "sender"
+      ]
+    },
+    "authFailed": {
+      "kind": "enum",
+      "values": [
+        "AUTH_FAILED"
+      ]
+    },
+    "errorCode": {
+      "kind": "enum",
+      "source": "error-codes.json"
+    },
+    "closeReason": {
+      "kind": "enum",
+      "source": "close-reasons.json"
+    },
+    "errorScope": {
+      "kind": "enum",
+      "values": [
+        "socket",
+        "candidate",
+        "room"
+      ]
+    }
+  },
+  "messages": [
+    {
+      "type": "auth",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "role": "role",
+        "room": "token16",
+        "cap": "token32"
+      }
+    },
+    {
+      "type": "auth.ok",
+      "targets": [
+        "receiver"
+      ],
+      "fields": {
+        "role": "receiver",
+        "room": "token16",
+        "serverTime": "timestamp",
+        "pairingExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "auth.ok",
+      "targets": [
+        "sender"
+      ],
+      "fields": {
+        "role": "sender",
+        "room": "token16",
+        "peer": "token16",
+        "serverTime": "timestamp",
+        "pairingExpiresAt": "timestamp",
+        "candidateExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "hb.ping",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "id": "heartbeatId"
+      }
+    },
+    {
+      "type": "hb.pong",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "id": "heartbeatId",
+        "serverTime": "timestamp"
+      }
+    },
+    {
+      "type": "pair.candidate",
+      "targets": [
+        "receiver"
+      ],
+      "fields": {
+        "peer": "token16",
+        "serverTime": "timestamp",
+        "candidateExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "pair.challenge",
+      "targets": [
+        "server",
+        "sender"
+      ],
+      "fields": {
+        "peer": "token16",
+        "rNonce": "token32"
+      }
+    },
+    {
+      "type": "pair.proof",
+      "targets": [
+        "server",
+        "receiver"
+      ],
+      "fields": {
+        "peer": "token16",
+        "sNonce": "token32",
+        "proof": "token32"
+      }
+    },
+    {
+      "type": "pair.commit",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "peer": "token16"
+      }
+    },
+    {
+      "type": "pair.confirm",
+      "targets": [
+        "server",
+        "sender"
+      ],
+      "fields": {
+        "peer": "token16",
+        "proof": "token32"
+      }
+    },
+    {
+      "type": "pair.reject",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "peer": "token16",
+        "code": "authFailed"
+      }
+    },
+    {
+      "type": "pair.committed",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "peer": "token16",
+        "serverTime": "timestamp",
+        "readyExpiresAt": "timestamp",
+        "idleExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "pair.active",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "peer": "token16"
+      }
+    },
+    {
+      "type": "pair.active",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "peer": "token16",
+        "serverTime": "timestamp",
+        "idleExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "pair.candidate_closed",
+      "targets": [
+        "receiver"
+      ],
+      "fields": {
+        "peer": "token16",
+        "code": "errorCode"
+      }
+    },
+    {
+      "type": "room.touch",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "peer": "token16"
+      }
+    },
+    {
+      "type": "room.touched",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "peer": "token16",
+        "serverTime": "timestamp",
+        "idleExpiresAt": "timestamp"
+      }
+    },
+    {
+      "type": "room.close",
+      "targets": [
+        "server"
+      ],
+      "fields": {
+        "reason": "closeReason"
+      }
+    },
+    {
+      "type": "room.closed",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "code": "errorCode"
+      }
+    },
+    {
+      "type": "error",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "fields": {
+        "code": "errorCode",
+        "scope": "errorScope"
+      }
+    }
+  ]
+}

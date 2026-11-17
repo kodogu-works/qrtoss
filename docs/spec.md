@@ -760,6 +760,7 @@ CLI等のブラウザ以外のクライアントも、ブラウザと同じAPI�
 - `ws`の`perMessageDeflate`を無効化する。
 - WebSocket接続後5秒以内の最初のアプリメッセージは`auth`。認証前はauth以外のアプリメッセージを認めない。アプリ用heartbeatも認証後に開始する。
 - 全メッセージに`v: 1`と`type`を含める。指定されていないフィールド、型の自動変換、未知のtypeを受け付けない。
+- 制御メッセージ内の時刻は0〜9,007,199,254,740,991（JavaScriptの安全な整数上限）の整数値で表すUnix epochミリ秒。JSON数値は、小数・指数表記も解釈した値がフィールドの範囲内の整数であれば受理する。数値文字列は受理しない。
 - 制御メッセージは2,048バイト以下、`cipher`を含むメッセージ全体は32,768バイト以下。frame分割で上限を回避できないよう、再構成されたメッセージで検証する。
 - 一度認証したソケットのroom・roleを変更しない。2回目のauthを拒否する。
 - 制御通知は暗号化されないため、秘密本文、本文ハッシュ、PSKを含めない。
@@ -1903,9 +1904,11 @@ npm workspacesとGo moduleを含む一つのリポジトリを参照構成とす
 
 TypeScriptの`packages/protocol`はGoから参照できないため、言語非依存の`protocol/`を正とする。
 
-- `protocol/`に、第4.1節の定数、第13章のエラーコード、第10.5節のclose reasonとcodeの対応、付録Aのテストベクトル（暗号・CLI出力）を置く。
-- TSとGoの定数ファイルは生成スクリプトで作成してコミットする（`npm run gen:protocol`、`go generate ./...`）。CIで再生成し、差分がないことを確認する。
-- 両言語のテストは`protocol/vectors/`の同じファイルを読み込む。
+- `protocol/`に、第4.1節の定数、第13章のエラーコード、第10.5節のclose reasonとcodeの対応、制御メッセージschema（`control-messages.json`）、付録Aのテストベクトル（暗号・CLI出力）と制御検証ベクトル（`vectors/control.json`）を置く。
+- TSとGoの定数、および制御メッセージの型・検証定義は生成スクリプトで作成してコミットする（`npm run gen:protocol`、`go generate ./...`）。CIで再生成し、差分がないことを確認する。
+- `control-messages.json`は全フィールド必須・追加フィールド禁止を前提に、制御メッセージごとの宛先（`server`・`receiver`・`sender`）とフィールド型を定義する。フィールド型の語彙は正規base64url（バイト長指定）、範囲付き整数、列挙値とする。エラーコードとclose reasonは既存JSONを参照し、値を重複定義しない。
+- サーバーとWebは`packages/protocol`の共通制御検証関数を使い、CLIは同じschemaから生成したGoの検証定義を使う。フィールドの型・値域・宛先は共通定義で検証し、認証済みの役割・room/peerとの照合・期限・状態遷移は各セッション実装で検証する。`cipher`は制御schemaとは別のenvelope検証・復号経路で扱う。
+- 両言語のテストは`protocol/vectors/`の同じファイルを読み込む。制御ベクトルはschemaから自動生成せず、仕様の具体例と境界値を独立に記述する。
 - relayからブラウザのcrypto実装をimportしない。共有パッケージにはPSKや実行時の接続状態を入れない。
 - UIは状態機械から描画し、DOMイベントの各所へ接続フラグを重複して持たせない。
 - schemaを型宣言だけで代替しない。ネットワーク入力には実行時検証を行い、追加フィールドを拒否する。schema validatorを追加する場合も固定依存・同梱の原則を適用する。
@@ -1916,7 +1919,7 @@ TypeScriptの`packages/protocol`はGoから参照できないため、言語非�
 | --- | --- |
 | `npm ci` | lockfileどおりに依存をインストール |
 | `npm run dev` | webとrelayを同一origin相当で起動。実機向けHTTPS手順も提供 |
-| `npm run gen:protocol` | `protocol/`からTS・Goの定数を生成 |
+| `npm run gen:protocol` | `protocol/`からTS・Goの定数と制御メッセージ検証定義を生成 |
 | `npm run typecheck` | 全workspaceの型検査 |
 | `npm run lint` | 静的検査 |
 | `npm test` | 単体・暗号fixture・仮想時計テスト |

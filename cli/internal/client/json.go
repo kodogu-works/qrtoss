@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/wistaria/qrtoss/cli/internal/constants"
 	"io"
+	"math"
 	"unicode/utf8"
 )
 
@@ -68,10 +69,15 @@ func str(m map[string]json.RawMessage, k string) string {
 	_ = json.Unmarshal(m[k], &v)
 	return v
 }
+
+// Match JavaScript's safe integer value domain, including integral JSON exponents.
 func integer(m map[string]json.RawMessage, k string) (int64, bool) {
-	var v int64
-	e := json.Unmarshal(m[k], &v)
-	return v, e == nil && m[k] != nil && string(m[k]) != "null"
+	var n float64
+	e := json.Unmarshal(m[k], &n)
+	if e != nil || m[k] == nil || bytes.Equal(bytes.TrimSpace(m[k]), []byte("null")) || math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n || n < -9007199254740991 || n > 9007199254740991 {
+		return 0, false
+	}
+	return int64(n), true
 }
 func fieldsOnly(m map[string]json.RawMessage, fields ...string) error {
 	if len(m) != len(fields) {
@@ -103,50 +109,65 @@ func control(b []byte) (map[string]json.RawMessage, error) {
 	if len(b) > constants.MAX_CONTROL_MESSAGE_BYTES {
 		return nil, errors.New("control too large")
 	}
-	f := []string{"v", "type"}
-	switch t {
-	case "auth.ok":
-		f = append(f, "role", "room", "serverTime", "pairingExpiresAt")
-		if str(m, "role") != "receiver" {
-			return nil, errors.New("invalid role")
-		}
-	case "hb.pong":
-		f = append(f, "id", "serverTime")
-	case "pair.candidate":
-		f = append(f, "peer", "serverTime", "candidateExpiresAt")
-	case "pair.proof":
-		f = append(f, "peer", "sNonce", "proof")
-	case "pair.committed":
-		f = append(f, "peer", "serverTime", "readyExpiresAt", "idleExpiresAt")
-	case "pair.active", "room.touched":
-		f = append(f, "peer", "serverTime", "idleExpiresAt")
-	case "pair.candidate_closed":
-		f = append(f, "peer", "code")
-	case "room.closed":
-		f = append(f, "code")
-	case "error":
-		f = append(f, "code", "scope")
-		if !oneOf(str(m, "scope"), "socket", "candidate", "room") {
-			return nil, errors.New("invalid error scope")
-		}
-	default:
-		return nil, errors.New("invalid message type")
-	}
-	if e := fieldsOnly(m, f...); e != nil {
+	if e := validateControl(m, "receiver"); e != nil {
 		return nil, e
 	}
-	for _, key := range []string{"serverTime", "pairingExpiresAt", "candidateExpiresAt", "readyExpiresAt", "idleExpiresAt", "id"} {
-		if m[key] != nil {
-			n, ok := integer(m, key)
-			if !ok || n < 0 {
-				return nil, errors.New("invalid timestamp")
+	return m, nil
+}
+
+type controlFieldRule struct {
+	kind     string
+	bytes    int
+	min, max int64
+	values   []string
+}
+type controlSchema struct {
+	kind    string
+	targets []string
+	fields  map[string]string
+}
+
+// Generated tables describe wire shape; session.go enforces state and peer binding.
+func validateControl(m map[string]json.RawMessage, target string) error {
+	v, ok := integer(m, "v")
+	if !ok || v != 1 {
+		return errors.New("version mismatch")
+	}
+	for _, schema := range controlSchemas {
+		if schema.kind != str(m, "type") || !oneOf(target, schema.targets...) {
+			continue
+		}
+		fields := []string{"v", "type"}
+		for field := range schema.fields {
+			fields = append(fields, field)
+		}
+		if fieldsOnly(m, fields...) != nil {
+			continue
+		}
+		valid := true
+		for field, name := range schema.fields {
+			rule := controlFieldTypes[name]
+			switch rule.kind {
+			case "integer":
+				n, ok := integer(m, field)
+				if !ok || n < rule.min || n > rule.max {
+					valid = false
+				}
+			case "base64url":
+				if _, err := Decode(str(m, field), rule.bytes); err != nil {
+					valid = false
+				}
+			case "enum":
+				if !oneOf(str(m, field), rule.values...) {
+					valid = false
+				}
+			default:
+				valid = false
 			}
 		}
-	}
-	if m["peer"] != nil {
-		if _, e := Decode(str(m, "peer"), 16); e != nil {
-			return nil, e
+		if valid {
+			return nil
 		}
 	}
-	return m, nil
+	return errors.New("invalid control message")
 }

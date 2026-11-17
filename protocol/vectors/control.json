@@ -1,0 +1,559 @@
+{
+  "cases": [
+    {
+      "name": "receiver authentication",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"auth\",\"role\":\"receiver\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"cap\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "sender authentication",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"auth\",\"role\":\"sender\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"cap\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "receiver authenticated",
+      "targets": [
+        "receiver"
+      ],
+      "json": "{\"v\":1,\"type\":\"auth.ok\",\"role\":\"receiver\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"pairingExpiresAt\":300001}"
+    },
+    {
+      "name": "sender authenticated",
+      "targets": [
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"auth.ok\",\"role\":\"sender\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"pairingExpiresAt\":300001,\"candidateExpiresAt\":10001}"
+    },
+    {
+      "name": "heartbeat request",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"hb.ping\",\"id\":0}"
+    },
+    {
+      "name": "heartbeat response",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":2147483647,\"serverTime\":9007199254740991}"
+    },
+    {
+      "name": "new candidate",
+      "targets": [
+        "receiver"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.candidate\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"candidateExpiresAt\":10001}"
+    },
+    {
+      "name": "challenge",
+      "targets": [
+        "server",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.challenge\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"rNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "sender proof",
+      "targets": [
+        "server",
+        "receiver"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "commit request",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.commit\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "receiver proof",
+      "targets": [
+        "server",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.confirm\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "reject candidate",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.reject\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"code\":\"AUTH_FAILED\"}"
+    },
+    {
+      "name": "commit notification",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.committed\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"readyExpiresAt\":10001,\"idleExpiresAt\":1800001}"
+    },
+    {
+      "name": "active request",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.active\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "active notification",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.active\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"idleExpiresAt\":1800001}"
+    },
+    {
+      "name": "candidate closed",
+      "targets": [
+        "receiver"
+      ],
+      "json": "{\"v\":1,\"type\":\"pair.candidate_closed\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"code\":\"PAIR_TIMEOUT\"}"
+    },
+    {
+      "name": "touch request",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.touch\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "touch notification",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.touched\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"idleExpiresAt\":1800001}"
+    },
+    {
+      "name": "close user_reset",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"user_reset\"}"
+    },
+    {
+      "name": "close user_end",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"user_end\"}"
+    },
+    {
+      "name": "close navigating",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"navigating\"}"
+    },
+    {
+      "name": "close client_error",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"client_error\"}"
+    },
+    {
+      "name": "close idle_timeout",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"idle_timeout\"}"
+    },
+    {
+      "name": "close transfer_limit",
+      "targets": [
+        "server"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"transfer_limit\"}"
+    },
+    {
+      "name": "room closed",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"room.closed\",\"code\":\"SESSION_EXPIRED\"}"
+    },
+    {
+      "name": "error socket",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"error\",\"code\":\"PROTOCOL_ERROR\",\"scope\":\"socket\"}"
+    },
+    {
+      "name": "error candidate",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"error\",\"code\":\"PROTOCOL_ERROR\",\"scope\":\"candidate\"}"
+    },
+    {
+      "name": "error room",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1,\"type\":\"error\",\"code\":\"PROTOCOL_ERROR\",\"scope\":\"room\"}"
+    },
+    {
+      "name": "integral exponent and fraction syntax",
+      "targets": [
+        "receiver",
+        "sender"
+      ],
+      "json": "{\"v\":1.0,\"type\":\"hb.pong\",\"id\":1e2,\"serverTime\":0.0}"
+    },
+    {
+      "name": "invalid v 0",
+      "targets": [],
+      "json": "{\"v\":0,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid v 2",
+      "targets": [],
+      "json": "{\"v\":2,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid v 1",
+      "targets": [],
+      "json": "{\"v\":\"1\",\"type\":\"hb.pong\",\"id\":0,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid v True",
+      "targets": [],
+      "json": "{\"v\":true,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid v None",
+      "targets": [],
+      "json": "{\"v\":null,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id -1",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":-1,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id 2147483648",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":2147483648,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id 0.5",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0.5,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id 0",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":\"0\",\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id False",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":false,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid id None",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":null,\"serverTime\":1}"
+    },
+    {
+      "name": "invalid serverTime -1",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":-1}"
+    },
+    {
+      "name": "invalid serverTime 9007199254740992",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":9007199254740992}"
+    },
+    {
+      "name": "invalid serverTime 0.5",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":0.5}"
+    },
+    {
+      "name": "invalid serverTime 1",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":\"1\"}"
+    },
+    {
+      "name": "invalid serverTime False",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":false}"
+    },
+    {
+      "name": "invalid serverTime None",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"hb.pong\",\"id\":0,\"serverTime\":null}"
+    },
+    {
+      "name": "invalid peer null",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":null,\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer true",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":true,\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer 0",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":0,\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer []",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":[],\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer {}",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":{},\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \"\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \"AAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA=\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \"AAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAB\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid peer \" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce null",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":null,\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce true",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":true,\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce 0",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":0,\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce []",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":[],\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce {}",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":{},\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \"\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \"AAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAA=\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \"AAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAB\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid sNonce \" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid proof null",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":null}"
+    },
+    {
+      "name": "invalid proof true",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":true}"
+    },
+    {
+      "name": "invalid proof 0",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":0}"
+    },
+    {
+      "name": "invalid proof []",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":[]}"
+    },
+    {
+      "name": "invalid proof {}",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":{}}"
+    },
+    {
+      "name": "invalid proof \"\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"\"}"
+    },
+    {
+      "name": "invalid proof \"AAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAA=\"}"
+    },
+    {
+      "name": "invalid proof \"AAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAB\"}"
+    },
+    {
+      "name": "invalid proof \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"}"
+    },
+    {
+      "name": "invalid proof \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"}"
+    },
+    {
+      "name": "invalid proof \" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.proof\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"sNonce\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"proof\":\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid enum auth role",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"auth\",\"role\":\"other\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"cap\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+    },
+    {
+      "name": "invalid enum auth.ok role",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"auth.ok\",\"role\":\"other\",\"room\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"serverTime\":1,\"pairingExpiresAt\":300001}"
+    },
+    {
+      "name": "invalid enum pair.reject code",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"pair.reject\",\"peer\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"code\":\"PEER_CLOSED\"}"
+    },
+    {
+      "name": "invalid enum room.closed code",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"room.closed\",\"code\":\"UNKNOWN\"}"
+    },
+    {
+      "name": "invalid enum room.closed code",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"room.closed\",\"code\":\"constructor\"}"
+    },
+    {
+      "name": "invalid enum error scope",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"error\",\"code\":\"PROTOCOL_ERROR\",\"scope\":\"all\"}"
+    },
+    {
+      "name": "invalid enum room.close reason",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"room.close\",\"reason\":\"__proto__\"}"
+    },
+    {
+      "name": "non-message None",
+      "targets": [],
+      "json": "null"
+    },
+    {
+      "name": "non-message []",
+      "targets": [],
+      "json": "[]"
+    },
+    {
+      "name": "non-message {}",
+      "targets": [],
+      "json": "{}"
+    },
+    {
+      "name": "non-message True",
+      "targets": [],
+      "json": "true"
+    },
+    {
+      "name": "non-message 1",
+      "targets": [],
+      "json": "1"
+    },
+    {
+      "name": "non-message control",
+      "targets": [],
+      "json": "\"control\""
+    },
+    {
+      "name": "not control unknown",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"unknown\"}"
+    },
+    {
+      "name": "not control constructor",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"constructor\"}"
+    },
+    {
+      "name": "not control __proto__",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"__proto__\"}"
+    },
+    {
+      "name": "not control toString",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"toString\"}"
+    },
+    {
+      "name": "not control cipher",
+      "targets": [],
+      "json": "{\"v\":1,\"type\":\"cipher\"}"
+    }
+  ]
+}
