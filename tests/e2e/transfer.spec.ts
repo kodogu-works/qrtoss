@@ -84,6 +84,14 @@ async function fakeCamera(page:Page,payload:string){
     }});
   },{data});
 }
+async function scanQR(page:Page,text:string){
+  await page.bringToFront();
+  // The app stops scanning in hidden documents; wait for the sender to be visible.
+  await expect.poll(()=>page.evaluate(()=>document.visibilityState)).toBe('visible');
+  await page.locator('#scan').click();
+  // Includes media playback startup and the production decoder Worker's cold load.
+  await expect(page.locator('#sender-text')).toHaveText(text,{timeout:15000});
+}
 async function pages(browser:Browser,payload:string){
   const rc=await browser.newContext({locale:'en-US'}),sc=await browser.newContext({locale:'en-US'});
   const r=await rc.newPage(),s=await sc.newPage();const failures:string[]=[];
@@ -109,7 +117,7 @@ test('camera QR → explicit confirmation → encrypted transfer to display-only
   const text='https://example.org/scan?qrtoss=1';const {r,s,rc,sc,failures,cspViolations,requestPaths,socketPaths,decoderWorkers}=await pages(browser,text);
   try{
     await r.locator('input[value="display_only"]').check();
-    await s.bringToFront();await s.locator('#scan').click();await expect(s.locator('#sender-text')).toHaveText(text);
+    await scanQR(s,text);
     expect(await s.evaluate(()=>{const tracks=(window as unknown as {qrCameraTracks:MediaStreamTrack[]}).qrCameraTracks;return tracks.length>0&&tracks.every(track=>track.readyState==='ended');})).toBe(true);
     await expect(r.locator('#receiver-text')).toHaveText('');
     await s.locator('#send').click();await expect(s.locator('#status')).toHaveText('Received by the other device');
@@ -131,14 +139,14 @@ test('default mode opens an accepted web URL in the same tab after ack_seen',asy
   try{
     await r.route(text,route=>route.fulfill({body:'received destination',contentType:'text/plain'}));
     await expect(r.locator('input[value="auto_open"]')).toBeChecked();
-    await s.locator('#scan').click();await expect(s.locator('#sender-text')).toHaveText(text);await s.locator('#send').click();
+    await scanQR(s,text);await s.locator('#send').click();
     await expect(r).toHaveURL(text);await expect(s.locator('#status')).toHaveText('Received by the other device');expect(failures).toEqual([]);expect(cspViolations).toEqual([]);
   }finally{await rc.close();await sc.close();}
 });
 test('inert content stays literal, language switches and mobile layout fits',async({browser})=>{
   const text='javascript:alert("never execute")';const {r,s,rc,sc,failures,cspViolations}=await pages(browser,text);
   try{
-    await s.locator('#scan').click();await expect(s.locator('#sender-text')).toHaveText(text);await s.locator('#send').click();
+    await scanQR(s,text);await s.locator('#send').click();
     await expect(r.locator('#receiver-text')).toHaveText(text);await expect(r.locator('#open')).toBeHidden();
     await r.setViewportSize({width:320,height:740});await r.locator('#language').selectOption('ja');await expect(r.locator('h1')).toHaveText('この端末で受信');
     expect(await r.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
