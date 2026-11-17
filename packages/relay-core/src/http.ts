@@ -1,3 +1,8 @@
+/** Require one supported offer; only HTTP optional whitespace may surround it. */
+export function acceptsWebSocketProtocol(value: string | null | undefined) {
+  return value?.replace(/^[ \t]+|[ \t]+$/g, '') === 'qrtoss.v1';
+}
+
 export function publicOrigin(value: string, allowHttpLoopback = false) {
   const url = new URL(value);
   if (

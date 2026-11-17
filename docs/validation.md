@@ -70,6 +70,14 @@ TD16 connects directly to local workerd, bypassing the test fixture's draining W
 
 On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 161 tests and `npm run test:cloudflare` passed all 53 tests, including all 12 real Go CLI scenarios on each adapter. TypeScript checks for both runtimes, lint, formatting, generated-definition checks, Cloudflare non-persistence checks, the production build and Wrangler's deployment dry run passed. These checks use local workerd; no staging deployment or real-device/browser test was performed for this fix.
 
+## WebSocket subprotocol review fix (7.4)
+
+Both adapters use `acceptsWebSocketProtocol()` from the shared HTTP module and require exactly one `qrtoss.v1` offer, allowing only surrounding HTTP spaces and tabs. Missing, empty, mismatched, combined or duplicate offers return 400 (`VERSION_UNSUPPORTED`) before socket admission. The existing per-IP capacity responses remain 503 (`CAPACITY`) on Node and 429 (`RATE_LIMITED`, `Retry-After: 6`) on Cloudflare; the specification now states this difference explicitly.
+
+The common relay regression sends raw HTTP upgrades to check 12 invalid cases, including repeated header lines, plus successful single offers with and without whitespace and the selected response header. For Cloudflare it connects directly to workerd, bypassing Miniflare's WebSocket client parsing and the fixture's proxy. TD04 also checks the JSON error and zero consumed CapacityDO socket leases. The previous Worker accepted `qrtoss.v1, other.v1` with 101 and failed the new regression; the corrected implementation returns 400.
+
+On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 162 tests and `npm run test:cloudflare` passed all 55 tests, including all 12 real Go CLI scenarios on each adapter. Both runtime type checks, lint, formatting, generated-definition checks, Cloudflare non-persistence checks and the production build passed. These are local checks; the staging and real-browser acceptance items remain pending.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

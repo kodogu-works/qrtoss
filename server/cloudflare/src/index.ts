@@ -5,6 +5,7 @@ import {
   responseHeaders,
   staticPath,
   assetCacheControl,
+  acceptsWebSocketProtocol,
 } from '../../../packages/relay-core/src/http.ts';
 import { normalizeIp, ipLimitKey } from '../../../packages/relay-core/src/ip.ts';
 import { capacity, capacityOptions, prefixLength, type Env } from './env.ts';
@@ -143,11 +144,8 @@ export function createWorker(clock: BridgeClock = realtime) {
             return reply(origin, 403, 'ORIGIN_DENIED');
           if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
             return reply(origin, 400, 'PROTOCOL_ERROR');
-          const protocols = request.headers
-            .get('Sec-WebSocket-Protocol')
-            ?.split(',')
-            .map((value) => value.trim());
-          if (!protocols?.includes('qrtoss.v1')) return reply(origin, 400, 'VERSION_UNSUPPORTED');
+          if (!acceptsWebSocketProtocol(request.headers.get('Sec-WebSocket-Protocol')))
+            return reply(origin, 400, 'VERSION_UNSUPPORTED');
           const lease = random(16);
           let reservation: Admission;
           try {

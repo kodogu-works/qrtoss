@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { createRelay } from '../../server/src/index.ts';
 import { createTestRelay } from '../helpers/relay.ts';
+import { websocketUpgrade } from '../helpers/upgrade.ts';
 
 const ORIGIN = 'https://qrtoss.test';
 const token = (n = 32) => randomBytes(n).toString('base64url');
@@ -248,6 +249,43 @@ test('upgrade refuses missing or mismatched origin and subprotocol', async (t) =
       });
     });
     assert.equal(status, expected);
+  }
+});
+
+test('upgrade accepts only a single qrtoss.v1 offer, including across repeated headers', async (t) => {
+  const { relay, url } = await setup();
+  t.after(() => relay.close());
+  // Miniflare's fetch adapter parses offers as a WebSocket client. Bypass it
+  // and the fixture's WS proxy when sending malformed headers to workerd.
+  const direct = 'mf' in relay ? await relay.mf.unsafeGetDirectURL() : undefined;
+  const upgrade = (protocols?: string | string[]) =>
+    websocketUpgrade(
+      direct?.href ?? url + '/ws',
+      ORIGIN,
+      protocols,
+      direct ? ORIGIN + '/ws' : undefined,
+    );
+  const invalid: (string | string[] | undefined)[] = [
+    undefined,
+    '',
+    'wrong.v1',
+    'QRTOSS.v1',
+    'qrtoss.v10',
+    'qrtoss.v1, other.v1',
+    'other.v1, qrtoss.v1',
+    'qrtoss.v1, qrtoss.v1',
+    ',qrtoss.v1',
+    'qrtoss.v1,',
+    ['qrtoss.v1', 'other.v1'],
+    ['qrtoss.v1', 'qrtoss.v1'],
+  ];
+  for (const protocols of invalid)
+    assert.equal((await upgrade(protocols)).status, 400, JSON.stringify(protocols));
+  assert.equal((await relay.stats()).sockets, 0);
+  for (const protocols of ['qrtoss.v1', ' \tqrtoss.v1\t ']) {
+    const response = await upgrade(protocols);
+    assert.equal(response.status, 101);
+    assert.equal(response.headers['sec-websocket-protocol'], 'qrtoss.v1');
   }
 });
 

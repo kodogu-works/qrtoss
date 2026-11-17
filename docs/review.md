@@ -179,11 +179,15 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 
 今回の7.3対応では、Node.js 26.13.1とGo 1.26.2で`npm test`（161件）と`npm run test:cloudflare`（53件）がすべて成功した。両runtimeの型検査、lint・整形、生成物の整合性検査、Cloudflareの静的検査、本番build、Wranglerの配備なしのパッケージ検査も成功した。検証用配備・実機での確認は行っていない。詳細は[`docs/validation.md`](validation.md)に記録した。
 
-### 7.4 [低] subprotocolの受理条件がNode版と違う
+### 7.4 [解消] subprotocolの受理条件がNode版と違う
 
-Node版（[`server/src/index.ts:199-201`](../server/src/index.ts#L199-L201)）は、提示されたsubprotocolが`qrtoss.v1`の1つだけであることを要求する。Cloudflare版（[`index.ts:146-150`](../server/cloudflare/src/index.ts#L146-L150)）は、提示された一覧に`qrtoss.v1`が含まれていれば受け付ける。仕様10.3（`qrtoss.v1`のみ）と18.7のTD01（Node版と同じ結果）に照らすと、Node版にそろえるべきである。正規のクライアントは`qrtoss.v1`だけを送るため、現状で実害はない。共通の判定関数を`packages/relay-core/src/http.ts`に置くと、差が生じなくなる。
+レビュー時点では、Node版は`qrtoss.v1`の1つだけを要求していたが、Cloudflare版は一覧に`qrtoss.v1`が含まれていれば受け付けていた。今回、[`acceptsWebSocketProtocol()`](../packages/relay-core/src/http.ts)に判定を共通化し、両アダプターから呼ぶようにした。単一の`qrtoss.v1`と前後のSP・HTABだけを許可し、未指定・空・異なる値・他のprotocolとの併記・重複指定を400（`VERSION_UNSUPPORTED`）で拒否する。判定は接続枠の取得より前に行う。
 
-同一IPの接続数の超過は、Node版が503（`CAPACITY`）、Cloudflare版が429（`RATE_LIMITED`、`Retry-After: 6`）を返す。Cloudflare版の応答は仕様15.6.4どおりだが、両版の結果が異なることを試験か仕様に明記するとよい。
+共通の中継試験（[`relay.test.ts`](../tests/relay/relay.test.ts)）は、生のHTTP upgrade要求で、複数のヘッダー行を含む12通りの不正な指定を拒否することと、単一指定・前後の空白を含む指定が101と`Sec-WebSocket-Protocol: qrtoss.v1`で成功することを確認する。TD04（[`runtime.integration.ts`](../tests/cloudflare/runtime.integration.ts)）はworkerdへ直接要求し、拒否時のエラーコードとCapacityDOの枠が消費されないことも確認する。WebSocketクライアントが不正な指定を送信前に拒否する挙動や、試験用プロキシの判定で問題を隠さない構成にした。修正前のWorkerでは`qrtoss.v1, other.v1`が101となり、追加試験が失敗することも再現した。
+
+同一IPの接続数超過では、Node版の503（`CAPACITY`）とCloudflare版の429（`RATE_LIMITED`、`Retry-After: 6`）を維持する。この応答の差も仕様15.6.4に明記した。subprotocolの規定は仕様10.3・15.6.4とTD04にそろえた。
+
+今回の7.4対応では、Node.js 26.13.1とGo 1.26.2で`npm test`（162件）と`npm run test:cloudflare`（55件）がすべて成功した。両runtimeの型検査、lint・整形、生成物の整合性検査、Cloudflareの静的検査、本番buildも成功した。
 
 ### 7.5 [低] リースの返却より後に更新が届くと、最大120秒数え続ける
 
@@ -215,7 +219,7 @@ Node版（[`server/src/index.ts:199-201`](../server/src/index.ts#L199-L201)）�
 | ---: | --- | --- |
 | 1 | 7.3 Worker中継の送信量の上限（対応済み） | 累計送信量を送信前に制限し、`SLOW_PEER`で終了する。仕様15.6.4・15.6.5とTD16も更新した |
 | 2 | 7.8 検証用配備での試験とブラウザからの接続 | ローカルのworkerdでは、Cloudflareのエッジとゾーン設定の挙動を確認できない |
-| 3 | 7.4 subprotocolの受理条件 | 修正が小さく、両版の差をなくせる |
+| 3 | 7.4 subprotocolの受理条件（対応済み） | 共通の判定関数で単一の`qrtoss.v1`だけを受理し、両版の回帰試験と仕様を更新した |
 | 4 | 7.6 不要なヘッダーとTD04の判定 | ランタイムの挙動に依存しないようにする |
 | 5 | 7.5 リースの更新と返却の順序 | 影響が一時的で、発生条件が限られる |
 | 6 | 7.7 仕様の記述 | 記録の正確さのため |

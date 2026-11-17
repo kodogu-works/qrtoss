@@ -14,6 +14,7 @@ import {
   responseHeaders,
   staticPath,
   assetCacheControl,
+  acceptsWebSocketProtocol,
 } from '../../packages/relay-core/src/http.ts';
 import { ipLimitKey, normalizeIp } from './ip.ts';
 
@@ -196,8 +197,7 @@ export function createRelay(options: RelayOptions) {
     }
     if (req.url !== '/ws') return reject(404, 'PROTOCOL_ERROR');
     if (req.headers.origin !== options.publicOrigin) return reject(403, 'ORIGIN_DENIED');
-    const protocols = req.headers['sec-websocket-protocol']?.split(',').map((x) => x.trim());
-    if (protocols?.length !== 1 || protocols[0] !== 'qrtoss.v1')
+    if (!acceptsWebSocketProtocol(req.headers['sec-websocket-protocol']))
       return reject(400, 'VERSION_UNSUPPORTED');
     if (stopping) return reject(503, 'SERVER_SHUTDOWN');
     const ip = ipOf(req);

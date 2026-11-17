@@ -774,7 +774,7 @@ CLI等のブラウザ以外のクライアントも、ブラウザと同じAPI�
 ### 10.3 WSS共通規則
 
 - URLは同じoriginの`/ws`を`wss:`にしたもの。ブラウザ版のサブパス配備ではベースパスを前置する（例：`wss://qrtoss.example/qrtoss/ws`）。トークンをクエリやsubprotocolへ入れない。
-- subprotocolは`qrtoss.v1`のみ。対応しない要求をupgradeしない。
+- `Sec-WebSocket-Protocol`は`qrtoss.v1`の1件だけを受け付ける。前後のHTTPの空白（SP・HTAB）は許可する。未指定・空・異なる値・他のprotocolとの併記・重複指定（複数のヘッダー行を含む）は、Node版・Cloudflare版とも400（`VERSION_UNSUPPORTED`）で拒否し、upgradeしない。
 - JSONのテキストメッセージだけを扱う。バイナリメッセージを拒否する。
 - `ws`の`perMessageDeflate`を無効化する。
 - WebSocket接続後5秒以内の最初のアプリメッセージは`auth`。認証前はauth以外のアプリメッセージを認めない。アプリ用heartbeatも認証後に開始する。
@@ -1755,8 +1755,8 @@ RoomDOの呼出しが失敗した場合は、取得したroom枠を返却し、5
 
 roomIdは最初の`auth`メッセージの中にあり、upgrade要求のURLとヘッダーには含まれない（第10.3節）。Cloudflare版はこの形式を変えず、Workerがクライアント側のWebSocketを終端し、最初のメッセージを見て振り分け先のRoomDOを決める。roomIdをURLのパスやクエリへ移す方式は、クライアントの通信形式を変え、Cloudflareの要求ログにroomIdを残すため採用しない。
 
-1. Workerが、メソッド`GET`、パス`/ws`、Upgrade要求であること、Originの完全一致、subprotocolに`qrtoss.v1`が含まれることを検査する。満たさない要求はupgradeしない。Originの不一致は403とする。
-2. WorkerがCapacityDOから未認証接続の枠と同一IPの接続枠を取得する（第15.6.7節）。取得できない場合はupgradeしない（503、または同一IPの上限超過では429）。
+1. Workerが、メソッド`GET`、パス`/ws`、Upgrade要求であること、Originの完全一致、subprotocolが`qrtoss.v1`の1件だけであること（第10.3節）を検査する。満たさない要求はupgradeしない。Originの不一致は403、subprotocolの不一致は400（`VERSION_UNSUPPORTED`）とし、接続枠を取得しない。
+2. WorkerがCapacityDOから未認証接続の枠と同一IPの接続枠を取得する（第15.6.7節）。取得できない場合はupgradeしない（503、または同一IPの上限超過では429）。同一IPの上限超過は、Node版では503（`CAPACITY`）、Cloudflare版では429（`RATE_LIMITED`、`Retry-After: 6`）となる。
 3. Workerが`WebSocketPair`で接続を受け入れ、`Sec-WebSocket-Protocol: qrtoss.v1`を付けて101を返す。permessage-deflateを無効にする。Cloudflareの現行compatibility dateではWebSocket圧縮が既定で有効なため、`no_web_socket_compression`フラグを指定し、101応答の`Sec-WebSocket-Extensions`も空にして交渉を拒否する。内部のWorker–RoomDO接続にも適用する。[S46]
 4. Workerは、接続から`AUTH_TIMEOUT_SECONDS`以内の最初のメッセージが、テキストで、`MAX_CONTROL_MESSAGE_BYTES`以下で、共通の制御メッセージ検証関数で`auth`として妥当であることを確認する。時間切れ、`auth`以外、schema違反、バイナリは1008、過大なメッセージは1009で閉じ、RoomDOへ接続しない。
 5. WorkerはCapacityDOに対し、そのIPが認証失敗の連続で一時拒否中でないことを確認する。拒否中なら第15.3節と同じ扱いで閉じる。
@@ -2350,7 +2350,7 @@ Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第
 | TD01 | `tests/relay`の統合試験を、対象をCloudflare版にして実行 | Node版と同じ結果になる |
 | TD02 | 相互運用試験（IX02、IX04、IX09を含む）をCloudflare版で実行 | Node版と同じ結果になる |
 | TD03 | receiverとsenderを別のネットワークから接続（検証用配備） | 同じRoomDOへ振り分けられ、ペアリング、送信、ackが成立する |
-| TD04 | `auth`以外の最初のメッセージ、5秒の時間切れ、バイナリ、過大なメッセージ、Origin不一致、subprotocolなし | 第10.3節どおりのclose codeまたはHTTPステータスで拒否し、RoomDOへ接続しない |
+| TD04 | `auth`以外の最初のメッセージ、5秒の時間切れ、バイナリ、過大なメッセージ、Origin不一致、subprotocolの未指定・空・不一致・複数・重複（複数のヘッダー行を含む） | 第10.3節どおりのclose codeまたはHTTPステータスで拒否し、RoomDOへ接続しない。不正なsubprotocolでは接続枠を消費しない。単一の`qrtoss.v1`（前後のSP・HTABを許可）は101と同名の選択ヘッダーを返す |
 | TD05 | 形式が正しく存在しないroomIdでの`auth`、閉じたroomへの`auth` | `PAIR_UNAVAILABLE`となり、認証失敗として数えられる。RoomDOに状態が残らない |
 | TD06 | 同じroomへの複数candidateの同時接続と、commitの競合 | `PEER_BUSY`とatomicなcommitがNode版と同じに動き、commitは1件だけ成立する |
 | TD07 | 片側の切断：クライアントの切断、RoomDO側からのclose、RoomDOへの内部接続の異常切断 | 相手側が第10.5節・第10.6節どおりの通知またはclose codeを受ける。1005・1006をクライアントへ送らない |

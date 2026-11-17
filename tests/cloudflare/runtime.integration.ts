@@ -13,6 +13,7 @@ import { Peer, pair } from '../interop/peer.ts';
 import { responseHeaders } from '../../packages/relay-core/src/http.ts';
 import { C } from '../../packages/protocol/src/constants.ts';
 import { MAX_SOCKET_SEND_BYTES } from '../../server/cloudflare/src/limits.ts';
+import { websocketUpgrade } from '../helpers/upgrade.ts';
 const ORIGIN = 'https://qrtoss.test';
 const token = (n = 32) => randomBytes(n).toString('base64url');
 async function setup(
@@ -106,6 +107,33 @@ test('TD04: invalid first messages never reach RoomDO; compression is disabled',
   }
   const stats = (await relay.control()) as unknown as { upgrades: number };
   assert.equal(stats.upgrades, 0);
+});
+
+test('TD04: subprotocol offers are validated before acquiring socket capacity', async (t) => {
+  const { relay } = await setup(t, {
+    publicOrigin: ORIGIN,
+    maxSockets: 1,
+    maxUnauthenticatedSockets: 1,
+  });
+  const direct = await relay.mf.unsafeGetDirectURL();
+  for (const protocol of [
+    undefined,
+    '',
+    'wrong.v1',
+    'qrtoss.v1, other.v1',
+    'other.v1, qrtoss.v1',
+    'qrtoss.v1, qrtoss.v1',
+    ',qrtoss.v1',
+    'qrtoss.v1,',
+  ]) {
+    const response = await websocketUpgrade(direct.href, ORIGIN, protocol, ORIGIN + '/ws');
+    assert.equal(response.status, 400, JSON.stringify(protocol));
+    assert.deepEqual(JSON.parse(response.body), { v: 1, error: { code: 'VERSION_UNSUPPORTED' } });
+  }
+  assert.equal((await relay.control()).capacity.sockets, 0);
+  const accepted = await websocketUpgrade(direct.href, ORIGIN, 'qrtoss.v1', ORIGIN + '/ws');
+  assert.equal(accepted.status, 101);
+  assert.equal(accepted.headers['sec-websocket-protocol'], 'qrtoss.v1');
 });
 
 test('TD05: unknown rooms and closed rooms have identical unavailable authentication', async (t) => {
