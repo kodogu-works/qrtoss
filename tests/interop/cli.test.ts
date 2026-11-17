@@ -65,7 +65,7 @@ after(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true });
 });
 
-async function start(format: 'text' | 'jsonl', delay = 0, scenario?: 'commit' | 'lateProof') {
+async function start(format: 'text' | 'jsonl', delay = 0, scenario?: 'commit' | 'lateProof', timeout = '15') {
   const secure = createServer({ key, cert: certificate });
   await new Promise<void>(resolve => secure.listen(0, '127.0.0.1', resolve));
   const address = secure.address();
@@ -99,7 +99,7 @@ async function start(format: 'text' | 'jsonl', delay = 0, scenario?: 'commit' | 
     },
   }) : undefined;
   if (!proxy) secure.on('upgrade', (req, socket, head) => relay.server.emit('upgrade', req, socket, head));
-  const child = spawn(binary, ['--server', origin, '--qr', 'off', '--pairing-url', '--lang', 'en', '--timeout', '15', '--format', format], {
+  const child = spawn(binary, ['--server', origin, '--qr', 'off', '--pairing-url', '--lang', 'en', '--timeout', timeout, '--format', format], {
     env: { ...process.env, QRTOSS_TEST_CA: join(fixture, 'cert.pem'), QRTOSS_TEST_OUTPUT_DELAY_MS: String(delay) }, stdio: 'pipe',
   });
   let output = '', diagnostics = '';
@@ -269,3 +269,28 @@ for (const scenario of ['commit', 'lateProof'] as const) {
     } finally { await session.close(); }
   });
 }
+
+test('permanent rejection retains exit 6 after a protocol violation', { timeout: 30000 }, async () => {
+  const session = await start('text');
+  try {
+    const id = randomToken(16);
+    await session.sender.app({ type: 'data', id, textB64: encodeText('line one\nline two') });
+    assert.deepEqual(await session.sender.receive(), { type: 'ack', id, status: 'rejected', reason: 'unsupported_content' });
+    await session.sender.app({ type: 'data', id: randomToken(16), textB64: encodeText('another item') });
+    assert.equal(await session.exited, 6);
+    assert.equal(session.output(), '');
+    assert.match(session.diagnostics(), /PROTOCOL_ERROR/);
+  } finally { await session.close(); }
+});
+
+test('coalesced CLI activity sends a trailing touch at the next heartbeat', { timeout: 30000 }, async () => {
+  const session = await start('text', 0, undefined, '25');
+  try {
+    await session.sender.next('room.touched');
+    await session.sender.app({ type: 'activity' });
+    // The initial ACTIVE touch coalesces this activity; heartbeat must flush it.
+    await new Promise(resolve => setTimeout(resolve, 14000));
+    await session.sender.next('room.touched');
+    assert.equal(session.child.exitCode, null);
+  } finally { await session.close(); }
+});

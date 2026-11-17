@@ -149,7 +149,10 @@ async function newReceiver():Promise<void> {
 
 async function onMessage(message:AppMessage,value:Session,generation:number):Promise<void> {
   if(message.type==='mode') {if(!sender) throw new Error('PROTOCOL_ERROR');peerMode=message.value;render();return;}
-  if(message.type==='status') {if(message.state==='scanned') state('peer_scanned');return;}
+  if(message.type==='status') {
+    if(!receiptProcessing && (!current || current.done)) state(message.state==='scanning'?'peer_scanning':message.state==='scanned'?'peer_scanned':'connected');
+    return;
+  }
   if(message.type==='activity') return;
   if(message.type==='data') {
     if(sender) throw new Error('PROTOCOL_ERROR');
@@ -213,13 +216,13 @@ function openContent():void {
 function scanned(content:string):void {
   cameraStarting=false;
   try {encodeText(content);preview=content;hasPreview=true;pending=undefined;errorCode='';state('scanned');void session?.send({type:'status',state:'scanned'}).catch(()=>{});}
-  catch(error) {state('connected');showError(error instanceof Error?error.message:'CONTENT_INVALID');}
+  catch(error) {state('connected');void session?.send({type:'status',state:'ready'}).catch(()=>{});showError(error instanceof Error?error.message:'CONTENT_INVALID');}
 }
 async function startScan():Promise<void> {
   if(phase!=='connected' || cameraStarting || pending&&!pending.settled || peerMode==='stdout'&&pending?.settled) return;
   cameraStarting=true;const generation=connectionGeneration;errorCode='';state('scanning');
   try {await session!.send({type:'status',state:'scanning'});await scanner!.start();if(generation!==connectionGeneration) scanner!.stop();}
-  catch(error) {if(generation===connectionGeneration) {state('connected');showError(error instanceof Error?error.message:'CAMERA_ERROR');}}
+  catch(error) {if(generation===connectionGeneration) {state('connected');void session?.send({type:'status',state:'ready'}).catch(()=>{});showError(error instanceof Error?error.message:'CAMERA_ERROR');}}
   finally{cameraStarting=false;render();}
 }
 async function sendContent(retry=false):Promise<void> {
@@ -249,7 +252,7 @@ el('copy').addEventListener('click',async()=>{
 });
 if(sender) {
   el('scan').addEventListener('click',()=>void startScan());
-  el('stop').addEventListener('click',()=>{scanner?.stop();cameraStarting=false;state(hasPreview?'scanned':'connected');void session?.send({type:'activity'}).catch(()=>{});});
+  el('stop').addEventListener('click',()=>{scanner?.stop();cameraStarting=false;state(hasPreview?'scanned':'connected');void session?.send({type:'status',state:hasPreview?'scanned':'ready'}).catch(()=>{});});
   el('send').addEventListener('click',()=>void sendContent());el('retry').addEventListener('click',()=>void sendContent(true));
 } else {
   el('new-qr').addEventListener('click',()=>void newReceiver());
@@ -260,7 +263,7 @@ if(sender) {
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden') {
     scanner?.stop();cameraStarting=false;
-    if(status==='scanning') state(hasPreview?'scanned':'connected');
+    if(status==='scanning') {state(hasPreview?'scanned':'connected');void session?.send({type:'status',state:hasPreview?'scanned':'ready'}).catch(()=>{});}
     if(current&&!current.done&&current.automatic) {current.automatic=false;autoCancelled=true;render();}
   }
 });

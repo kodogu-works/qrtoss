@@ -173,7 +173,7 @@ export function createRelay(options: RelayOptions) {
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return reply(res, 405, 'PROTOCOL_ERROR');
     if (!options.staticDir) return reply(res, 404, 'PROTOCOL_ERROR');
-    const requested = path === '/' || path === '/send' ? 'index.html' : path?.startsWith('/assets/') ? path.slice(1) : null;
+    const requested = path === '/' ? 'index.html' : path === '/send' ? 'send/index.html' : path?.startsWith('/assets/') ? path.slice(1) : null;
     if (!requested || requested.includes('..') || requested.includes('%') || requested.includes('\\')) return reply(res, 404, 'PROTOCOL_ERROR');
     const root = resolve(options.staticDir), file = resolve(root, requested);
     if (!file.startsWith(root + sep)) return reply(res, 404, 'PROTOCOL_ERROR');
@@ -231,7 +231,7 @@ export function createRelay(options: RelayOptions) {
   function fail(c: Client, code = 'PROTOCOL_ERROR', close = 1008) {
     notification(c, 'error', { code, scope: c.room ? c.role === 'sender' && c.room.state === 'CANDIDATE' ? 'candidate' : 'room' : 'socket' });
     if (c.room) {
-      if (c.role === 'sender' && c.room.state === 'CANDIDATE') closeCandidate(c.room, code);
+      if (c.role === 'sender' && c.room.state === 'CANDIDATE') closeCandidate(c.room, code, close, false);
       else closeRoom(c.room, code, undefined, close);
     }
     c.ws.close(close);

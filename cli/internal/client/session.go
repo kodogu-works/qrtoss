@@ -146,6 +146,20 @@ func (r *Runner) Run(ctx context.Context, args []string) int {
 	}
 }
 
+// receiverActivity keeps local activity independent of delayed touch delivery.
+type receiverActivity struct {
+	last, sent time.Time
+	pending    bool
+}
+
+func (a *receiverActivity) record(now time.Time) { a.last = now; a.pending = true }
+func (a *receiverActivity) due(now, serverDeadline time.Time) bool {
+	return a.pending && (a.sent.IsZero() || now.Sub(a.sent) >= constants.TOUCH_COALESCE_SECONDS*time.Second || serverDeadline.Sub(now) <= constants.TOUCH_URGENT_REMAINING_SECONDS*time.Second)
+}
+func (a *receiverActivity) expired(now time.Time) bool {
+	return !a.last.IsZero() && now.Sub(a.last) >= constants.SESSION_IDLE_SECONDS*time.Second
+}
+
 type wireRead struct {
 	b []byte
 	e error
@@ -343,7 +357,8 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 	var peer, rnonce string
 	var keys Keys
 	var crypt *Cipher
-	var candidateDeadline, readyDeadline, idleDeadline, lastTouch time.Time
+	var candidateDeadline, readyDeadline, idleDeadline time.Time
+	activity := receiverActivity{}
 	committed, ready, active := false, false, false
 	var acceptedID string
 	var digest [32]byte
@@ -368,16 +383,21 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 		}
 		return sendCipher(m)
 	}
-	touch := func() error {
+	flushTouch := func(force bool) error {
 		now := time.Now()
-		if !lastTouch.IsZero() && now.Sub(lastTouch) < constants.TOUCH_COALESCE_SECONDS*time.Second && time.Until(idleDeadline) > constants.TOUCH_URGENT_REMAINING_SECONDS*time.Second {
+		if !activity.pending || !force && !activity.due(now, idleDeadline) {
 			return nil
 		}
 		if err := ctl("room.touch", map[string]any{"peer": peer}, drain); err != nil {
 			return err
 		}
-		lastTouch = now
+		activity.sent = now
+		activity.pending = false
 		return nil
+	}
+	touch := func() error {
+		activity.record(time.Now())
+		return flushTouch(false)
 	}
 	closeRoom := func(reason string) {
 		end := time.Now().Add(100 * time.Millisecond)
@@ -398,7 +418,7 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 	}
 	violation := func() (int, error) {
 		closeRoom("client_error")
-		if written {
+		if written || rejected {
 			_ = t.event("PROTOCOL_ERROR")
 			return finish(!drain.IsZero())
 		}
@@ -431,6 +451,9 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 				}
 			}
 			pingID++
+			if !disconnected && active && acceptedID == "" && activity.pending {
+				_ = flushTouch(true)
+			}
 		case <-tick.C:
 			now := time.Now()
 			if !drain.IsZero() && !now.Before(drain) {
@@ -438,6 +461,10 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 			}
 			if acceptedID == "" && !deadline.IsZero() && !now.Before(deadline) {
 				return 0, fail(124, "TIMEOUT")
+			}
+			if acceptedID == "" && active && activity.expired(now) {
+				closeRoom("idle_timeout")
+				return 1, fail(3, "SESSION_EXPIRED")
 			}
 			// QR expiry is decided by the server, even before pair.committed arrives.
 			if acceptedID == "" && (committed && !active && !readyDeadline.IsZero() && !now.Before(readyDeadline) || active && !idleDeadline.IsZero() && !now.Before(idleDeadline)) {
@@ -565,12 +592,14 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 					return violation()
 				}
 				active = true
+				activity.last = time.Now()
 				end, _ := integer(m, "idleExpiresAt")
 				st, _ := integer(m, "serverTime")
 				idleDeadline = time.Now().Add(time.Duration(end-st) * time.Millisecond)
 				if e = t.event("CONNECTED"); e != nil {
 					return 0, fail(5, "IO_ERROR")
 				}
+				_ = touch()
 				if e = sendCipher(map[string]any{"type": "mode", "value": "stdout"}); e != nil {
 					return 1, fail(3, "DISCONNECTED")
 				}

@@ -293,3 +293,58 @@ func TestWaitingDeadlineIncludesConnect(t *testing.T) {
 		t.Fatalf("deadline: code=%d calls=%d time=%v output=%q", code, calls, time.Since(start), out.String())
 	}
 }
+
+func TestReceiverActivity(t *testing.T) {
+	now := time.Now()
+	a := receiverActivity{}
+	deadline := now.Add(30 * time.Minute)
+	a.record(now)
+	if !a.due(now, deadline) {
+		t.Fatal("first activity must send")
+	}
+	a.sent, a.pending = now, false
+	a.record(now.Add(time.Second))
+	if a.due(now.Add(time.Second), deadline) {
+		t.Fatal("activity must coalesce")
+	}
+	if !a.due(now.Add(15*time.Second), deadline) {
+		t.Fatal("last activity must be sent later")
+	}
+	a.sent, a.pending = now.Add(15*time.Second), false
+	if a.expired(now.Add(30 * time.Minute)) {
+		t.Fatal("expiry must follow activity, not initial touch")
+	}
+	if !a.expired(now.Add(30*time.Minute + time.Second)) {
+		t.Fatal("local idle boundary must expire")
+	}
+	if a.due(now.Add(30*time.Second), deadline) {
+		t.Fatal("no activity must not send")
+	}
+	a.record(now.Add(16 * time.Second))
+	if !a.due(now.Add(16*time.Second), now.Add(17*time.Second)) {
+		t.Fatal("urgent activity must bypass coalescing")
+	}
+}
+
+func TestEnvelopeFieldCase(t *testing.T) {
+	key := make([]byte, 32)
+	env, err := Seal(key, "room", "peer", "s2r", 0, []byte(`{"type":"ready"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(env)
+	for _, field := range []string{"v", "type", "room", "peer", "dir", "seq", "ct"} {
+		bad := bytes.Replace(raw, []byte(`"`+field+`":`), []byte(`"`+strings.ToUpper(field)+`":`), 1)
+		c := Cipher{Room: "room", Peer: "peer", Keys: Keys{S2R: key}}
+		if _, err := c.Decrypt(bad); err == nil {
+			t.Fatalf("accepted uppercase %s", field)
+		}
+		bad = append([]byte(`{"`+strings.ToUpper(field)+`":null,`), raw[1:]...)
+		if _, err := c.Decrypt(bad); err == nil {
+			t.Fatalf("accepted additional alias %s", field)
+		}
+		if _, err := c.Decrypt(raw); err != nil {
+			t.Fatalf("valid envelope rejected after invalid input: %v", err)
+		}
+	}
+}

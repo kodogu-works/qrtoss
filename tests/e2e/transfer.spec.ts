@@ -116,6 +116,19 @@ async function pages(browser:Browser,payload:string){
   await expect(s.locator('#status')).toHaveText('Connected securely');await expect(r.locator('#status')).toHaveText('Connected securely');
   return {r,s,rc,sc,failures,url,cspViolations,requestPaths,socketPaths,decoderWorkers:()=>decoderWorkers};
 }
+test('receiver shows scanning and resets after the sender stops',async({browser})=>{
+  const {r,s,rc,sc}=await pages(browser,'scan fixture');
+  try {
+    // Keep the camera starting until Stop is clicked, without decoding a QR.
+    await s.evaluate(()=>{
+      Object.defineProperty(MediaDevices.prototype,'getUserMedia',{configurable:true,value:()=>new Promise(()=>{})});
+    });
+    await s.locator('#scan').click();
+    await expect(r.locator('#status')).toHaveText('The sender is scanning a QR code.');
+    await s.locator('#stop').click();
+    await expect(r.locator('#status')).toHaveText('Connected securely');
+  } finally {await rc.close();await sc.close();}
+});
 test('camera QR → explicit confirmation → encrypted transfer to display-only receiver',async({browser})=>{
   const text='https://example.org/scan?qrtoss=1';const {r,s,rc,sc,failures,cspViolations,requestPaths,socketPaths,decoderWorkers}=await pages(browser,text);
   try{

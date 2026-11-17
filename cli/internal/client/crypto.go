@@ -136,6 +136,13 @@ func (c *Cipher) Encrypt(v any) (Envelope, error) {
 }
 func (c *Cipher) Decrypt(raw []byte) (map[string]json.RawMessage, error) {
 	var out map[string]json.RawMessage
+	var fields map[string]json.RawMessage
+	if e := strict(raw, &fields); e != nil {
+		return nil, e
+	}
+	if e := fieldsOnly(fields, "v", "type", "room", "peer", "dir", "seq", "ct"); e != nil {
+		return nil, e
+	}
 	var env Envelope
 	if e := strict(raw, &env); e != nil {
 		return nil, e

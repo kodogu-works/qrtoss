@@ -86,6 +86,8 @@
 
 ### 3.3 [低] その他
 
+**対応済み**：CLIの末尾touchと自己の最終活動に基づく無操作終了、送信専用HTMLの配信、Envelopeのキー名の厳密検査、候補senderへのerror通知の重複解消、恒久拒否後の終了コード6の維持、受信ページの読み取り中表示を実装した。拒否確定後の扱いを仕様に追記し、関連する回帰試験を追加した。以下は修正前の指摘である。
+
 | 箇所 | 問題 | 修正提案 |
 | --- | --- | --- |
 | [`cli/internal/client/session.go:371`](../cli/internal/client/session.go#L371) | `room.touch`の集約で捨てた活動を後から送らない（仕様4.4の末尾送信がない）。サーバーのidle期限が最大15秒早まる。また自己の最終活動から30分の判定と`room.close`（`idle_timeout`）を行わない | Webの`touchPending`と同様に保留フラグを持ち、heartbeatのタイミングで送る。自己判定のidle期限到達時は`idle_timeout`で閉じる |

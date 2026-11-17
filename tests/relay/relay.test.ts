@@ -284,12 +284,16 @@ test('sender cannot touch idle timeout, receiver cannot inject sender envelopes'
 test('HTTP body limit and hashed static assets obey cache and content boundaries', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'qrtoss-static-'));
   await mkdir(join(directory, 'assets'));
+  await mkdir(join(directory, 'send'));
+  await writeFile(join(directory, 'send', 'index.html'), '<!doctype html><title>Send</title>');
   await writeFile(join(directory, 'index.html'), '<!doctype html><title>qrtoss</title>');
   await writeFile(join(directory, 'assets', 'main-1234abcd.js'), 'export {};');
   const { relay, url, create } = await setup({ publicOrigin: ORIGIN, staticDir: directory });
   t.after(async () => { await relay.close(); await rm(directory, { recursive: true, force: true }); });
   assert.equal((await create('{"v":1,"pad":"' + 'x'.repeat(2048) + '"}')).status, 413);
   const html = await fetch(url + '/send');
+  assert.equal(await html.text(), '<!doctype html><title>Send</title>');
+  assert.equal(await (await fetch(url + '/')).text(), '<!doctype html><title>qrtoss</title>');
   assert.equal(html.status, 200); assert.equal(html.headers.get('cache-control'), 'no-store');
   const asset = await fetch(url + '/assets/main-1234abcd.js');
   assert.equal(asset.status, 200); assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
@@ -378,4 +382,23 @@ test('candidate can end normally without closing receiver or consuming QR', asyn
   assert.equal((await receiver.next('pair.candidate_closed')).code, 'PEER_CLOSED');
   assert.equal((await closed)[0], 1000);
   assert.equal(relay.stats().rooms, 1);
+});
+
+test('candidate failure sends exactly one error and releases the candidate', async t => {
+  const { relay, url, create } = await setup();
+  t.after(() => relay.close());
+  const room = await (await create()).json() as Message;
+  const receiver = new Peer(url); await receiver.open();
+  receiver.send('auth', { role: 'receiver', room: room.room, cap: room.receiverCap });
+  await receiver.next('auth.ok');
+  const sender = new Peer(url); await sender.open();
+  sender.send('auth', { role: 'sender', room: room.room, cap: room.senderJoinCap });
+  await sender.next('auth.ok');
+  const candidate = await receiver.next('pair.candidate');
+  const closed = once(sender.ws, 'close');
+  sender.send('invalid');
+  assert.equal((await sender.next('error')).code, 'PROTOCOL_ERROR');
+  assert.equal((await receiver.next('pair.candidate_closed')).peer, candidate.peer);
+  await closed;
+  assert.equal(sender.queue.filter(m => m.type === 'error').length, 0);
 });
