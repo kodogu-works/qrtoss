@@ -134,7 +134,10 @@ async function start(
     publicOrigin: origin,
     ...(scenario ? { now: () => clock, wallNow: () => 1700000000000 + clock } : {}),
   });
+  const userAgents = { http: [] as string[], websocket: [] as string[] };
+  secure.on('upgrade', (req) => userAgents.websocket.push(req.headers['user-agent'] ?? ''));
   secure.on('request', (req, res) => {
+    if (req.url === '/api/v1/rooms') userAgents.http.push(req.headers['user-agent'] ?? '');
     if (
       (scenario === 'commit' || scenario === 'lateProof') &&
       firstRoom &&
@@ -303,6 +306,7 @@ async function start(
       exited,
       output: () => output,
       diagnostics: () => diagnostics,
+      userAgents,
       expireIdle() {
         assert.equal(scenario, 'idle');
         serverExpired = true;
@@ -360,6 +364,8 @@ test('TS sender → real Go receiver: HTTPS, mutual proof, one text output, ACK 
 }, async () => {
   const session = await start('text');
   try {
+    assert.match(session.userAgents.http[0], /^qrtoss\/[^\s]+$/);
+    assert.equal(session.userAgents.websocket[0], session.userAgents.http[0]);
     const id = randomToken(16),
       text = 'https://example.org/こんにちは?x=1';
     await session.sender.app({ type: 'data', id, textB64: encodeText(text) });

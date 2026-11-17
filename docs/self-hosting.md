@@ -115,7 +115,7 @@ Back up deployment configuration and TLS certificate volumes as needed; there is
 
 The Cloudflare relay uses the same browser and CLI protocol as the Node relay. A Worker accepts HTTP and WebSocket requests, each room has one RoomDO, and a single CapacityDO manages admission. Both relays use `packages/relay-core/src/` for pairing, commit, expiry, heartbeat, message limits and ciphertext forwarding. Cloudflare deployments use the origin root; subpath builds are rejected by the Cloudflare commands.
 
-Use Node.js 26, `npm ci`, a Cloudflare account with Durable Objects available, and a domain managed by Cloudflare. Wrangler is pinned in `devDependencies`; a global installation is unnecessary. Check the current [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits/) before choosing a plan. Standard WebSockets keep rooms in memory and incur duration charges while connected; this implementation deliberately avoids hibernation.
+Use Node.js 26, `npm ci` and a Cloudflare account with Durable Objects available. Choose a `workers.dev` URL or a custom domain managed by Cloudflare. Wrangler is pinned in `devDependencies`; a global installation is unnecessary. Check the current [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [limits](https://developers.cloudflare.com/durable-objects/platform/limits/) before choosing a plan. Standard WebSockets keep rooms in memory and incur duration charges while connected; this implementation deliberately avoids hibernation.
 
 For local development:
 
@@ -126,11 +126,31 @@ npm run dev:cloudflare
 
 Open `https://127.0.0.1:8787`. Wrangler uses a local development certificate, which the browser may require you to trust. This loopback origin is for desktop development; real-phone tests require a reachable HTTPS deployment with a certificate trusted by the phone. The command builds the Web assets, then starts local workerd through Wrangler. Web asset changes require rebuilding and restarting. It overrides `PUBLIC_ORIGIN` only for this local command and disables Wrangler's route-based origin inference so the Worker sees the actual loopback HTTPS origin.
 
-Before deploying, edit `wrangler.jsonc`:
+Before deploying, edit `wrangler.jsonc` and choose one hosting mode:
 
-- Set `vars.PUBLIC_ORIGIN` to your exact HTTPS origin without a trailing slash.
-- Set the one `routes[].pattern` to that origin's hostname, with `custom_domain: true`.
-- Review the numeric limits below and keep `workers_dev: false`, `preview_urls: false`, `observability.enabled: false`, and `compatibility_flags: ["no_web_socket_compression"]`.
+| Setting | Custom domain (repository default) | `workers.dev` |
+| --- | --- | --- |
+| `workers_dev` | `false` | `true` |
+| `routes` | `[{"pattern":"qrtoss.example","custom_domain":true}]` with your hostname | `[]`, or omit the field |
+| `vars.PUBLIC_ORIGIN` | `https://qrtoss.example` with your hostname | `https://qrtoss.<account-subdomain>.workers.dev` |
+
+For `workers.dev`, use the account subdomain shown in Workers & Pages; it can be configured there if needed. The first hostname label must match `name` in `wrangler.jsonc` (default `qrtoss`, lowercased in the URL). This Worker name must be a DNS label of at most 63 letters, digits or hyphens, without a leading or trailing hyphen. See [Cloudflare's workers.dev routing guide](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/).
+
+For example, update these fields in the existing file, retaining its other bindings, migration, asset settings and variables:
+
+```json
+{
+  "name": "qrtoss",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://qrtoss.my-account.workers.dev"
+  }
+}
+```
+
+Replace `my-account` with your account subdomain. Both modes require one exact HTTPS `PUBLIC_ORIGIN` without a port, path or trailing slash. Custom-domain routes and `workers.dev` hosting cannot be enabled together. Keep `preview_urls: false` to disable [version and alias URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/), `observability.enabled: false`, and `compatibility_flags: ["no_web_socket_compression"]`. Review the numeric limits below. `check:cloudflare` rejects inconsistent hosting settings before deployment.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -166,10 +186,14 @@ This validates the configuration, builds the Web assets and runs the pinned Wran
 
 All requests pass through the Worker, including assets. HTML/API/404 responses have the shared security headers and `Cache-Control: no-store`; hashed assets can be cached immutably. `/` and `/send` map to their built HTML explicitly; missing paths receive 404. Do not introduce `_headers`, SPA fallbacks, extra public hostnames, flags enabling WebSocket compression, or additional service/data bindings. WebSocket compression is explicitly disabled with `no_web_socket_compression` on inbound and outbound connections; modern compatibility dates otherwise enable it automatically. Omit `Sec-WebSocket-Extensions` from Worker and RoomDO upgrade responses and the internal upgrade request, including empty values. `check:cloudflare` rejects manual extension header references in executable relay code. See [Cloudflare compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#websocket-compression). The two `new_sqlite_classes` migration entries provision DO namespaces but the application never calls their storage or Alarm APIs.
 
-At the zone level, disable Rocket Loader, Email Address Obfuscation, automatic Cloudflare Web Analytics injection, Zaraz and other HTML/script rewriting for this hostname. Disable JavaScript/Managed Challenges on `/api/v1/rooms` and `/ws`, since the CLI cannot complete them. Let the Worker supply HSTS rather than adding another HSTS policy at the zone. Keep Workers Logs, Logpush and Tail Workers off. Use `wrangler tail` only briefly for investigation; never add raw requests, exceptions, capabilities, identifiers or message bodies to logs.
+For a custom domain, disable Rocket Loader, Email Address Obfuscation, automatic Cloudflare Web Analytics injection, Zaraz and other HTML/script rewriting at the zone level for this hostname. Disable JavaScript/Managed Challenges on `/api/v1/rooms` and `/ws`, since the CLI cannot complete them. Let the Worker supply HSTS rather than adding another HSTS policy at the zone.
+
+On `workers.dev`, Cloudflare's shared zone enforces Browser Integrity Check, which account zone settings cannot disable. Some default library User-Agents can receive error 1010 before the Worker runs. The CLI sends `User-Agent: qrtoss/<version>` on both room creation and WebSocket upgrade, following [Cloudflare's guidance to identify the application](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/#browser-integrity-check). Confirm the deployed CLI and browser behavior during acceptance; local workerd does not exercise this edge check.
+
+Keep Workers Logs, Logpush and Tail Workers off in either mode. Use `wrangler tail` only briefly for investigation; never add raw requests, exceptions, capabilities, identifiers or message bodies to logs.
 
 The Cloudflare hosting trust boundary includes Cloudflare's TLS termination and delivery of HTML/JavaScript. Endpoints encrypt content, but Cloudflare can observe IP addresses, timings, ciphertext sizes and traffic volume. Zone analytics and security events may record request metadata such as IP, path and User-Agent even with Workers Logs disabled. Disclose this distinction in your privacy policy; application non-persistence does not mean the hosting provider collects no metadata.
 
 The local non-persistence test checks all persisted SQLite tables and scans the files for synthetic transfer secrets. workerd can create empty namespace databases, WAL/SHM files and empty internal alarm metadata without application writes; file existence alone does not establish transfer persistence. Before public operation, also confirm **zero DO storage usage and storage operations** in the deployed account. Do not add KV, D1, R2, Queues, Cache API, Analytics Engine, Hyperdrive, attachment serialization or hibernation APIs.
 
-Use a separate custom domain with production-equivalent settings for manual acceptance. Verify receiver and sender on separate networks, a real `qrtoss --server https://your-host` transfer, deployment/restart recovery, zero storage metrics, security headers on all response classes, exact deployed HTML/JS bytes, and that workers.dev/preview/wrong hosts are disabled or return 404. These account, network and zone checks are not established by local workerd tests. See specification TD03, TD08, TD11, TD12 and TD15 and [validation status](validation.md).
+Use a separate Worker and origin in the chosen hosting mode with production-equivalent settings for manual acceptance. Verify receiver and sender on separate networks, a real `qrtoss --server https://your-host` transfer, deployment/restart recovery, zero storage metrics, security headers on all response classes and exact deployed HTML/JS bytes. The configured custom domain or stable `workers.dev` URL must work; other hosts and version/alias URLs must be disabled or return 404. These account, edge, network and zone checks are not established by local workerd tests. See specification TD03, TD08, TD11, TD12, TD13 and TD15 and [validation status](validation.md).

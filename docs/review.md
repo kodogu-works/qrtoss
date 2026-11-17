@@ -157,7 +157,7 @@ CIはGo 1.27.4を使うが、[`docs/validation.md`](validation.md)の記録で�
 | 15.6.6 非保存 | 適合（ローカル） | [`check-cloudflare.mjs`](../scripts/check-cloudflare.mjs)が、ストレージ・Alarm・attachment・cache・`console`への参照と、許可していない設定キーを禁止する。CIで実行している。TD11は、永続化ディレクトリのSQLiteの全テーブルが空であることと、秘密値がファイルにないことを確認する。本番のストレージ使用量は未確認（仕様どおり手動確認の項目） |
 | 15.6.7 上限 | 適合 | [`CapacityState`](../packages/relay-core/src/capacity.ts#L17)は、リース（期限120秒、更新60秒ごと）、更新時の再登録（上限を超えていても行う）、IPごとの上限を実装している。CapacityDOに失敗したとき、または期限内に応答がないときは新規受付を503で拒否し、既存の接続は維持する（TD10） |
 | 15.6.8 クライアントIP | 適合 | `CF-Connecting-IP`だけを使い、`X-Forwarded-For`は使わない。正規化のコードはNode版と共有している |
-| 16.10 設定 | 適合 | `workers_dev`・`preview_urls`・`observability`が無効で、`no_web_socket_compression`、`run_worker_first`、`html_handling: "none"`、`not_found_handling: "none"`を設定している。これらは静的検査で固定されている |
+| 16.10 設定 | 適合 | `workers.dev`配備の追加後は、配備先に応じた`workers_dev`・`routes`と`PUBLIC_ORIGIN`の整合を静的検査する。`preview_urls`・`observability`の無効化と、`no_web_socket_compression`、`run_worker_first`、`html_handling: "none"`、`not_found_handling: "none"`は両方の配備先で固定している。実配備の確認は7.8節に残る |
 
 ### 7.2 確認した事項
 

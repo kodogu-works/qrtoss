@@ -39,7 +39,7 @@ func (r *Runner) connectReceiver(ctx context.Context, o Options, t *terminal, h 
 	wsurl := "wss" + strings.TrimPrefix(o.Server, "https") + "/ws"
 	conn, resp, err := websocket.Dial(attempt, wsurl, &websocket.DialOptions{
 		HTTPClient:      h,
-		HTTPHeader:      http.Header{"Origin": []string{o.Server}},
+		HTTPHeader:      http.Header{"Origin": []string{o.Server}, "User-Agent": []string{"qrtoss/" + Version}},
 		Subprotocols:    []string{"qrtoss.v1"},
 		CompressionMode: websocket.CompressionDisabled,
 	})
@@ -79,6 +79,7 @@ func createReceiverRoom(ctx context.Context, server string, h *http.Client) (rec
 	}
 	req.Header.Set("Origin", server)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "qrtoss/"+Version)
 	res, err := h.Do(req)
 	if err != nil {
 		return receiverRoom{}, networkFailure(err)

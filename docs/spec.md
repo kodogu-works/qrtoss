@@ -202,7 +202,7 @@ sequenceDiagram
 | 共通定義 | `protocol/`の言語非依存JSON（定数・エラーコード・テストベクトル）からTS・Goの定数を生成（第17.2節） |
 | パッケージ管理 | npmとコミット済み`package-lock.json`。CI・配備は`npm ci`。CLIはGo modulesと`go.sum` |
 | テスト | Nodeのテストランナー、ブラウザ統合テスト、`go test`、相互運用試験、iPhone/Android実機確認 |
-| 配備 | Node版：単一Nodeプロセス＋HTTPSリバースプロキシ。Docker Composeの例を提供。Cloudflare版：`wrangler`の設定ファイルとカスタムドメイン（第16.10節） |
+| 配備 | Node版：単一Nodeプロセス＋HTTPSリバースプロキシ。Docker Composeの例を提供。Cloudflare版：`wrangler`の設定ファイルと、カスタムドメインまたは`workers.dev`のURL（第16.10節） |
 | CLI配布 | OS・CPU別バイナリ、SHA-256一覧と署名、Homebrew tap、版固定の試用ランチャー |
 
 Node.js 26は2026年10月にLTSへ移行し、Node.js 24はMaintenance LTSの期間にある。Node.js 27以降は年1回のメジャーリリースとなる予定である。実装開始時にサポート状況と依存パッケージのライセンス・既知脆弱性を確認し、採用する正確なバージョンとコンテナdigestを固定する。新しいLTSへの変更は、プロトコル互換性を維持して行える。[S01] [S02] [S03] [S04] [S30]
@@ -225,7 +225,7 @@ CLIの暗号は、`crypto/sha256`、`crypto/hmac`、`crypto/hkdf`、`crypto/aes`
 
 | 項目 | Node版 | Cloudflare版 |
 | --- | --- | --- |
-| 想定する配備先 | VPS、自宅サーバー、コンテナ。Apache・Nginx・Caddy等のHTTPSリバースプロキシの背後に置く | Cloudflare WorkersとDurable Objects。Cloudflareで管理するドメインのカスタムドメイン |
+| 想定する配備先 | VPS、自宅サーバー、コンテナ。Apache・Nginx・Caddy等のHTTPSリバースプロキシの背後に置く | Cloudflare WorkersとDurable Objects。Cloudflareで管理するカスタムドメイン、または`workers.dev`のURL |
 | room状態の置き場所 | 1プロセスのメモリ内`Map` | roomごとのDurable Object（RoomDO）のメモリ |
 | room総数・接続数の上限 | プロセス内のカウンター | 配備に1つのDurable Object（CapacityDO）によるリース管理（第15.6.7節） |
 | TLSの終端 | 運用者のリバースプロキシ | Cloudflare |
@@ -765,6 +765,7 @@ CLI等のブラウザ以外のクライアントも、ブラウザと同じAPI�
 
 - `POST /api/v1/rooms`とWebSocket upgradeに、接続先の公開originのASCII直列化（例：`https://qrtoss.example`）を`Origin`ヘッダーとして付ける。サーバーは送信元の種類を区別せず、第10.1節の完全一致検査を適用する。
 - `POST /api/v1/rooms`は`Content-Type: application/json`、本文`{"v":1}`で送る。
+- CLIはroom作成とWebSocket upgradeの両方に`User-Agent: qrtoss/<CLIの版>`を付ける。個人・端末の識別子や秘密値は含めず、サーバーの認証・権限判断にも用いない。`workers.dev`での利用条件は第16.10.3節に従う。
 - HTTPのリダイレクトに従わない。3xxは接続先の設定誤りとして扱う。
 - WebSocketのsubprotocol `qrtoss.v1`を要求し、サーバーが選択しなかった場合はその接続を使わない。
 - WebSocket圧縮（permessage-deflate）を要求しない。受信メッセージの上限を`MAX_WS_MESSAGE_BYTES`に設定し、再構成後のメッセージで検証する。
@@ -2007,7 +2008,7 @@ curl --proto '=https' --proto-redir '=https' -fsSL https://qrtoss.example/cli/v0
 
 #### 16.10.1 必要なもの
 
-- Cloudflareのアカウントと、Cloudflareで管理するドメイン。公開originはそのドメインのカスタムドメインとする（例：`https://qrtoss.example`）。
+- Cloudflareのアカウント。公開originはCloudflareで管理するカスタムドメイン（例：`https://qrtoss.example`）、または`https://<Worker名>.<アカウントのsubdomain>.workers.dev`から1つを選ぶ。`workers.dev`を選ぶ場合、独自ドメインは不要とする。[S47]
 - Durable Objectsを使えるWorkersのプラン。無料枠の上限に達すると受付が止まるため、公開運用では有料プランを推奨する。採用するプランの上限と料金は実装時に確認する。[S41]
 - `wrangler`。リポジトリのdevDependencyとして正確な版を固定する。
 - DB、KV、R2、Redis、STUN、TURNは不要とする。
@@ -2020,8 +2021,9 @@ Cloudflare版の設定ファイル（`wrangler.jsonc`）は次を満たす。
 | --- | --- |
 | `compatibility_date` | 固定した日付。更新は依存更新と同じ手順で確認してから行う |
 | `compatibility_flags` | `["no_web_socket_compression"]`。WebSocket圧縮を明示的に無効化し、本節の条件を変える他のフラグを設定しない[S46] |
-| `routes` | 公開originのホスト名を`custom_domain: true`で1つだけ指定する。ルートパス配備だけとする |
-| `workers_dev`、`preview_urls` | どちらも`false`。`*.workers.dev`やプレビューURLで公開しない |
+| `routes` | カスタムドメインでは公開originのホスト名を`custom_domain: true`で1つだけ指定する。`workers.dev`では省略するか空配列とする。ルートパス配備だけとする |
+| `workers_dev` | カスタムドメインでは`false`、`workers.dev`では`true`とする。両方の公開先を同時に有効にしない[S47] |
+| `preview_urls` | どちらの配備先でも明示的に`false`。Version URL・alias URLで公開しない[S48] |
 | `assets` | ビルド済みのWeb配信物のディレクトリ、`binding: "ASSETS"`、`run_worker_first: true`、`not_found_handling: "none"`[S40] |
 | `durable_objects.bindings` | `ROOM`（RoomDO）と`CAPACITY`（CapacityDO） |
 | `migrations` | 両クラスを`new_sqlite_classes`で宣言する。ストレージは使わない（第15.6.6節） |
@@ -2030,14 +2032,17 @@ Cloudflare版の設定ファイル（`wrangler.jsonc`）は次を満たす。
 | `tail_consumers`、Logpush | 設定しない |
 | 上記以外のbinding | 設定しない（第15.6.6節） |
 
+`PUBLIC_ORIGIN`はポート・パス・末尾の`/`を含まないHTTPS originとする。`workers.dev`では先頭のホスト名ラベルを`name`の小文字表記と一致させる。Worker名は63文字以内の英数字・ハイフンとし、先頭・末尾のハイフンを認めない。[S47] `check:cloudflare`は、配備先と`routes`・`workers_dev`・`PUBLIC_ORIGIN`の不一致を配備前に拒否する。
+
 Workerは、`PUBLIC_ORIGIN`が第16.2節の条件を満たさない場合、全要求に固定のエラーコードで500を返す。要求URLのoriginが`PUBLIC_ORIGIN`と一致しない場合は404を返す。Hostヘッダーから接続用URLを生成しない点はNode版と同じである。
 
 #### 16.10.3 レスポンスヘッダーとゾーンの設定
 
 - `run_worker_first: true`により全要求をWorkerで受け、静的assetも`ASSETS` bindingから取得した後にWorkerがヘッダーを付ける。第16.4節のヘッダーと、第10.1節の`Cache-Control`をNode版と同じ共通モジュールで付ける。`_headers`ファイルは使わない。
 - `/`と`/send`はビルド済みの該当HTMLへ明示的に対応付ける。存在しないパスは404とし、SPA向けの代替HTMLを返さない。
-- ゾーンの機能が配信内容を書き換えたりスクリプトを挿入したりしないよう、公開originでは次を無効にする：Rocket Loader、Email Address Obfuscation、Cloudflare Web Analyticsの自動挿入、Zaraz、その他HTMLを書き換える機能。これらは第16.4節のCSPと第2.1節のR18に反する。
-- Bot対策のチャレンジ（JavaScriptチャレンジ、Managed Challenge等）を`/api/v1/rooms`と`/ws`に適用しない。CLIはチャレンジを処理できない。
+- カスタムドメインでは、ゾーンの機能が配信内容を書き換えたりスクリプトを挿入したりしないよう、公開originで次を無効にする：Rocket Loader、Email Address Obfuscation、Cloudflare Web Analyticsの自動挿入、Zaraz、その他HTMLを書き換える機能。これらは第16.4節のCSPと第2.1節のR18に反する。
+- カスタムドメインでは、Bot対策のチャレンジ（JavaScriptチャレンジ、Managed Challenge等）を`/api/v1/rooms`と`/ws`に適用しない。CLIはチャレンジを処理できない。
+- `workers.dev`にはCloudflareの共有ゾーンのBrowser Integrity Checkが適用され、利用者のゾーン設定では無効にできない。ライブラリ既定のUser-AgentによってはWorker実行前に1010で拒否されるため、CLIは第10.2節のアプリ名と版を送る。[S47] エッジでのCLI・ブラウザ接続と配信内容は検証用配備で確認する。
 - HSTSは第16.4節の方針どおりとし、WorkerのヘッダーかCloudflareの設定のどちらか一方で付ける。
 
 #### 16.10.4 ログと観測
@@ -2354,7 +2359,7 @@ fixtureの電話番号・メール・パス等は試験用であり、試験中�
 
 ### 18.7 Cloudflare版の試験
 
-Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第18.4節の相互運用試験、および次の試験に合格しなければならない。自動試験はローカルのworkerd（`wrangler dev`）で行い、TD03・TD11の一部・TD12・TD15は本番と同じ設定の検証用配備（別のカスタムドメイン）で行う。期限の境界は共有モジュールの仮想時計で検証し、実時間で待たない。
+Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第18.4節の相互運用試験、および次の試験に合格しなければならない。自動試験はローカルのworkerd（`wrangler dev`）で行い、TD03・TD08の配備・TD11の一部・TD12・TD13・TD15は本番と同じ設定の検証用配備で行う。検証用には別のWorkerと公開originを用意し、本番と同じ配備先の種類（カスタムドメインまたは`workers.dev`）を使う。期限の境界は共有モジュールの仮想時計で検証し、実時間で待たない。
 
 | ID | 条件 | 合格条件 |
 | --- | --- | --- |
@@ -2370,7 +2375,7 @@ Cloudflare版は、第18.1節のうち中継サーバーに関わる試験、第
 | TD10 | `MAX_ROOMS`、WS数、同一IPの接続数、room作成と認証失敗のレートの超過、CapacityDOの再起動・応答なし、room・ソケットの返却後に別stubから届く遅延更新 | 第15.6.7節どおりに503・429（固定秒数の`Retry-After`）で拒否する。返却済みIDへの更新では件数を復活させず、新しいIDのroom・接続は受け付けられる。返却記録は120秒の境界で削除でき、重複返却で期限を延ばさない。CapacityDOの再起動で既存のroomを閉じず、件数が更新で回復する。応答がない場合は新規受付を拒否する |
 | TD11 | 非保存の確認 | 第15.6.6節の3点（ストレージAPI等の参照なし、ローカルの永続化ディレクトリが空、本番のDOストレージ使用量・操作数が0）を満たす。配備設定に禁止したbindingがない |
 | TD12 | `/`、`/send`、asset、API、404の各応答と、配信されたHTML | 第16.4節のヘッダーと第10.1節の`Cache-Control`がNode版と同じになる。配信されたHTML・JSがビルド成果物とバイト単位で一致し、ゾーンの機能によるスクリプトの挿入がない |
-| TD13 | `*.workers.dev`、プレビューURL、`PUBLIC_ORIGIN`と異なるホストへの要求 | 公開されていない、または404で拒否される |
+| TD13 | 配備先として選んだカスタムドメインまたは安定した`workers.dev` URL、別のWorker・アカウント等のホスト、Version URL・alias URLへの要求 | `PUBLIC_ORIGIN`への要求は通常どおり処理し、それ以外は公開されていない、または404で拒否される。配備設定が両方の公開先を有効にせず、`preview_urls: false`である |
 | TD14 | ダミー内容による一連の転送の後のWorker・DOの出力 | 本文、暗号文、capability、接続用URL、roomId、IPを含まない |
 | TD15 | 検証用配備に対して`--server`を指定したCLIで受信 | IX02と同じ結果になる |
 | TD16 | 実際のworkerdへのTCP読み取りを止めた相手が`hb.ping`と`room.touch`を送り続け、両方向に大量の`cipher`を中継する。空白で膨らませた入力、制御通知だけの累計超過、通常の100件転送も試す | WorkerとRoomDOが第15.6.5節の送信前上限を守り、超過メッセージを転送せず`SLOW_PEER`と1008で終了する。終了通知も総量内に収まり、同時接続中の別roomは通信を継続できる。最大本文100件とack・ack_seenは完了できる |
@@ -2412,7 +2417,7 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 
 ## 20. 参考資料
 
-S01〜S36の初回確認日：2026-11-15。Cloudflare関連のS37〜S46の確認記録は本節末尾に示す。以下はブラウザAPI・暗号プリミティブ・依存ライブラリ・端末・配布の挙動の根拠となる資料である。5分・30分等の値、独自ペアリング手順、ACK手順、CLIのオプション・時間・上限・終了コード、言語の導入順は本サービスの設計上の決定であり、外部仕様が一律に要求するものではない。
+S01〜S36の初回確認日：2026-11-15。Cloudflare関連のS37〜S48の確認記録は本節末尾に示す。以下はブラウザAPI・暗号プリミティブ・依存ライブラリ・端末・配布の挙動の根拠となる資料である。5分・30分等の値、独自ペアリング手順、ACK手順、CLIのオプション・時間・上限・終了コード、言語の導入順は本サービスの設計上の決定であり、外部仕様が一律に要求するものではない。
 
 | ID | 資料 | 主な参照箇所 |
 | --- | --- | --- |
@@ -2462,6 +2467,8 @@ S01〜S36の初回確認日：2026-11-15。Cloudflare関連のS37〜S46の確認
 | S44 | [Cloudflare: HTTP request headers][S44] | `CF-Connecting-IP` |
 | S45 | [Cloudflare: Workers Logs][S45] | Workers Logsの記録内容と無効化 |
 | S46 | [Cloudflare: Compatibility flags — WebSocket Compression][S46] | 現行日付では圧縮が既定で有効、無効化フラグの受信・送信接続への適用 |
+| S47 | [Cloudflare: workers.dev][S47] | 安定した公開URL、Worker名の条件、Browser Integrity CheckとアプリのUser-Agent |
+| S48 | [Cloudflare: Version URLs][S48] | `preview_urls: false`によるVersion URL・alias URLの無効化 |
 
 S37〜S45は1.1.0で追加し、Cloudflare版の実装時に公式文書のURLと内容を確認した。今回の再確認日：2026-11-17（America/Chicago）。S46を含む次の公式資料のURLと該当する本文を再確認した。
 
@@ -2472,6 +2479,8 @@ S37〜S45は1.1.0で追加し、Cloudflare版の実装時に公式文書のURL�
 | S41・S42 | SQLite-backed DOのFree/Paidプラン条件、標準WebSocketのduration課金、WebSocketメッセージ・CPU等の上限 |
 | S43・S44 | 本番の時刻APIがI/O後に進むこと、`CF-Connecting-IP`とWorker subrequestでの扱い |
 | S45・S46 | Workers Logsの記録内容・有効化設定、受信・送信接続のWebSocket圧縮フラグ |
+
+`workers.dev`配備の追加にあたり、S47・S48のURLと本文も2026-11-17（America/Chicago）に確認した。確認対象は安定したURLとWorker名の対応、Browser Integrity CheckとUser-Agent、Version URL・alias URLの無効化である。
 
 配備先のゾーン設定、別ネットワーク・実機ブラウザでの接続、DOストレージの使用量・操作数の実測は、第18.7節の受入試験で確認する。実施済み・未実施の状況は[`docs/validation.md`](validation.md)に記録しており、上表は公式資料の確認範囲を示す。
 
@@ -2521,6 +2530,8 @@ S37〜S45は1.1.0で追加し、Cloudflare版の実装時に公式文書のURL�
 [S44]: https://developers.cloudflare.com/fundamentals/reference/http-headers/
 [S45]: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
 [S46]: https://developers.cloudflare.com/workers/configuration/compatibility-flags/#websocket-compression
+[S47]: https://developers.cloudflare.com/workers/configuration/routing/workers-dev/
+[S48]: https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/
 
 ## 付録A. 暗号プロトコルとCLI出力の公開テストベクトル
 
@@ -2646,4 +2657,4 @@ No.1とNo.2のJSON Linesのバイト列（16進）：
 | 版 | 日付 | 内容 |
 | --- | --- | --- |
 | 1.0.0 | 2026-11-15 | 初版。サービス名をqrtossとする |
-| 1.1.0 | 2026-11-18 | Cloudflare WorkersとDurable Objectsで動く中継サーバー（Cloudflare版）を追加（第3.4節、第15.6節、第16.10節、第18.7節、I15・I16）。レビュー7.3対応として、送信量の累計上限と終了通知の予約領域、TD16を規定した。クライアントとの通信形式と暗号方式は変更しない |
+| 1.1.0 | 2026-11-18 | Cloudflare WorkersとDurable Objectsで動く中継サーバー（Cloudflare版）を追加（第3.4節、第15.6節、第16.10節、第18.7節、I15・I16）。カスタムドメインまたは`workers.dev`の公開先を選べる。レビュー7.3対応として、送信量の累計上限と終了通知の予約領域、TD16を規定した。クライアントとの通信形式と暗号方式は変更しない |

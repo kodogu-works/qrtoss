@@ -272,6 +272,9 @@ func TestHTTPBoundary(t *testing.T) {
 			if req.Header.Get("Origin") != "https://example.org" || req.Header.Get("Content-Type") != "application/json" {
 				t.Error("missing request contract")
 			}
+			if req.Header.Get("User-Agent") != "qrtoss/"+Version {
+				t.Error("missing application User-Agent")
+			}
 			body, _ := io.ReadAll(req.Body)
 			if string(body) != `{"v":1}` {
 				t.Error("unexpected body")

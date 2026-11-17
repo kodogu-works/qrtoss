@@ -45,7 +45,7 @@ Mantén `PUBLIC_ORIGIN` como origen sin ruta, por ejemplo `https://myserver.exam
 
 ## Alojamiento en Cloudflare
 
-El servidor también funciona con Cloudflare Workers y Durable Objects, usando el mismo protocolo de navegador y CLI. Configura el dominio y `PUBLIC_ORIGIN` en `wrangler.jsonc`, ejecuta `npm run test:cloudflare` y publica con `npm run deploy:cloudflare`. Para workerd local, usa `npm run dev:cloudflare`. Consulta [la configuración, privacidad y operación en Cloudflare](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
+El servidor también funciona con Cloudflare Workers y Durable Objects, usando el mismo protocolo de navegador y CLI. Elige un dominio personalizado o una URL de `workers.dev` y configura el `PUBLIC_ORIGIN` correspondiente en `wrangler.jsonc`, ejecuta `npm run test:cloudflare` y publica con `npm run deploy:cloudflare`. Para workerd local, usa `npm run dev:cloudflare`. Consulta [la configuración, privacidad y operación en Cloudflare](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
 
 ## Cliente de línea de comandos
 

@@ -25,19 +25,39 @@ check(
   Object.keys(config).every((key) => allowed.has(key)),
   'CLOUDFLARE_BINDING_OR_LOG_CONFIG',
 );
-check(config.workers_dev === false && config.preview_urls === false, 'CLOUDFLARE_PUBLIC_PREVIEW');
+check(config.preview_urls === false, 'CLOUDFLARE_PUBLIC_PREVIEW');
 check(config.observability?.enabled === false, 'CLOUDFLARE_LOGGING');
 check(
   JSON.stringify(config.compatibility_flags) === JSON.stringify(['no_web_socket_compression']),
   'CLOUDFLARE_COMPATIBILITY_FLAGS',
 );
 check(/^\d{4}-\d{2}-\d{2}$/.test(config.compatibility_date), 'CLOUDFLARE_COMPATIBILITY_DATE');
+const origin = new URL(config.vars.PUBLIC_ORIGIN);
+const labels = origin.hostname.split('.');
+const dnsLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const workersDev =
+  config.workers_dev === true &&
+  (config.routes === undefined || (Array.isArray(config.routes) && config.routes.length === 0)) &&
+  typeof config.name === 'string' &&
+  dnsLabel.test(config.name) &&
+  labels.length === 4 &&
+  labels[0] === config.name.toLowerCase() &&
+  dnsLabel.test(labels[1]) &&
+  labels[2] === 'workers' &&
+  labels[3] === 'dev';
+const customDomain =
+  config.workers_dev === false &&
+  Array.isArray(config.routes) &&
+  config.routes.length === 1 &&
+  config.routes[0].custom_domain === true &&
+  origin.host === config.routes[0].pattern &&
+  origin.hostname !== 'workers.dev' &&
+  !origin.hostname.endsWith('.workers.dev');
 check(
-  config.routes?.length === 1 &&
-    config.routes[0].custom_domain === true &&
-    new URL(config.vars.PUBLIC_ORIGIN).origin === config.vars.PUBLIC_ORIGIN &&
-    new URL(config.vars.PUBLIC_ORIGIN).protocol === 'https:' &&
-    new URL(config.vars.PUBLIC_ORIGIN).host === config.routes[0].pattern,
+  origin.origin === config.vars.PUBLIC_ORIGIN &&
+    origin.protocol === 'https:' &&
+    origin.port === '' &&
+    (workersDev || customDomain),
   'CLOUDFLARE_ORIGIN',
 );
 check(

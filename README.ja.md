@@ -56,7 +56,7 @@ QRTOSS_BASE_PATH=/qrtoss/ npm run build
 
 ## Cloudflareで運用
 
-Cloudflare Workers と Durable Objects でも、同じブラウザ・CLI の通信形式で中継できます。`wrangler.jsonc` にカスタムドメインと `PUBLIC_ORIGIN` を設定し、`npm run test:cloudflare` で検証後、`npm run deploy:cloudflare` で配備します。ローカルの workerd は `npm run dev:cloudflare` で起動できます。[Cloudflare の設定・非保存・運用手順](docs/self-hosting.md#cloudflare-workers-and-durable-objects)を参照してください。
+Cloudflare Workers と Durable Objects でも、同じブラウザ・CLI の通信形式で中継できます。カスタムドメインまたは `workers.dev` のURLを選び、対応する `PUBLIC_ORIGIN` を `wrangler.jsonc` に設定します。`npm run test:cloudflare` で検証後、`npm run deploy:cloudflare` で配備します。ローカルの workerd は `npm run dev:cloudflare` で起動できます。[Cloudflare の設定・非保存・運用手順](docs/self-hosting.md#cloudflare-workers-and-durable-objects)を参照してください。
 
 ## CLI
 

@@ -385,6 +385,51 @@ test('TD12/TD13: origin enforcement, route boundaries, security headers and asse
   }
 });
 
+test('TD12/TD13: a workers.dev origin supports encrypted transfer and rejects alternate hosts', async (t) => {
+  const origin = 'https://qrtoss.my-account.workers.dev';
+  const { relay, url } = await setup(t, { publicOrigin: origin });
+  const { r, s } = await pair(url, origin);
+  t.after(() => {
+    r.close();
+    s.close();
+  });
+  const response = await relay.mf.dispatchFetch(origin + '/');
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    Buffer.from(await response.arrayBuffer()),
+    await readFile('dist/web/index.html'),
+  );
+  for (const [name, value] of Object.entries(responseHeaders(new URL(origin))))
+    assert.equal(response.headers.get(name), value);
+  const message = {
+    type: 'data' as const,
+    id: token(16),
+    textB64: Buffer.from('workers.dev transfer 日本語').toString('base64url'),
+  };
+  await s.app(message);
+  assert.deepEqual(await r.receive(), message);
+  await r.app({ type: 'ack', id: message.id, status: 'received' });
+  assert.deepEqual(await s.receive(), { type: 'ack', id: message.id, status: 'received' });
+  await s.app({ type: 'ack_seen', id: message.id });
+  assert.deepEqual(await r.receive(), { type: 'ack_seen', id: message.id });
+  for (const host of [
+    'qrtoss.test',
+    'qrtoss.other-account.workers.dev',
+    'other-worker.my-account.workers.dev',
+    'version-qrtoss.my-account.workers.dev',
+  ])
+    assert.equal((await relay.mf.dispatchFetch('https://' + host + '/')).status, 404);
+  const denied = await relay.mf.dispatchFetch(origin + '/api/v1/rooms', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://qrtoss.other-account.workers.dev',
+      'Content-Type': 'application/json',
+    },
+    body: '{"v":1}',
+  });
+  assert.equal(denied.status, 403);
+});
+
 test('TD11/TD14: encrypted transfer leaves no SQLite data or sensitive runtime logs', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'qrtoss-do-persistence-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

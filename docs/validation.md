@@ -60,7 +60,7 @@ TypeScript checks for both runtimes, lint, formatting, generated definitions, i1
 
 The production dependency audit reported zero vulnerabilities. The full dependency audit still reports the existing picomatch/Vite development-tool chain advisory already documented in CI; the added Cloudflare dependencies introduced no additional audit findings.
 
-No Cloudflare account deployment, cross-network real-device test, deployed CLI session, zone rewrite/challenge setting, workers.dev/preview hosting setting or production storage metric was verified. TD03, the deployment part of TD08, the production part of TD11/TD12/TD13 and TD15 still require the separate staging/custom-domain evidence described in the specification and [operations](self-hosting.md#cloudflare-workers-and-durable-objects). Firefox and WebKit were not rerun for this change. Local success does not claim public deployment or completion of those manual acceptance items.
+No Cloudflare account deployment, cross-network real-device test, deployed CLI session, zone rewrite/challenge setting, workers.dev/preview hosting setting or production storage metric was verified. TD03, the deployment part of TD08, the production part of TD11/TD12/TD13 and TD15 still require separate staging evidence in the chosen hosting mode, as described in the specification and [operations](self-hosting.md#cloudflare-workers-and-durable-objects). Firefox and WebKit were not rerun for this change. Local success does not claim public deployment or completion of those manual acceptance items.
 
 ## Worker relay send-volume review fix (7.3)
 
@@ -97,6 +97,16 @@ On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 165 tes
 Specification 17.1 now lists the implemented Web, Node, Cloudflare, shared-module, Go CLI, generator and test paths, including the root `wrangler.jsonc`. It describes the root npm package and `cli/` Go module. All 46 listed repository paths and 74 relative file links in the three changed documents were checked against the repository; obsolete layout names were removed from the section.
 
 The ten official Cloudflare references S37–S46 were revisited on 2026-11-17 (America/Chicago). Specification 20 records the date and reviewed topics: object identity and lifecycle, WebSocket APIs and hibernation, static asset routing, plan/usage limits, timers, client-IP headers, logging and compression flags. The existing confirmation note for S37–S45 was already present when this correction began. Documentation review does not add staging, cross-network or real-device test results; those remain the review 7.8 acceptance items.
+
+## workers.dev hosting selection
+
+Cloudflare deployments can select a custom domain or the stable `https://<worker-name>.<account-subdomain>.workers.dev` URL. The configuration check enforces one exact HTTPS origin, matching Worker name and account hostname in `workers.dev` mode, no custom routes in that mode, and one matching custom-domain route with `workers_dev: false` in custom-domain mode. It rejects mixed hosting, mismatched names, version-prefixed URLs, non-default ports and path suffixes. Preview URLs, application logging and WebSocket compression remain disabled in both modes.
+
+Three configuration regression groups cover both modes and invalid settings. TD12/TD13 runs encrypted Unicode transfer, ack and ack_seen with a `workers.dev` public origin in local workerd, checks exact HTML and shared security headers, and rejects alternate hosts and mismatched request Origins. The Go CLI sends `User-Agent: qrtoss/<version>` on room creation and WebSocket upgrade; the HTTP boundary test and actual TLS/Go interoperability test verify those headers. The [deployment guide](self-hosting.md#cloudflare-workers-and-durable-objects) and specification 10.2, 16.10 and 18.7 describe the settings and edge behavior.
+
+On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, all 168 Node tests and all 57 Cloudflare tests passed, including all 12 actual Go CLI scenarios on each adapter. The final configuration fixtures also passed after being made independent of the operator's selected hosting mode. Both runtime type checks, lint, formatting, generated definitions, i18n, Cloudflare static checks, the production build, Go race tests, Go vet and Staticcheck v0.8.2 passed. Wrangler's deployment dry run packaged both hosting configurations with the production entry point and assets; nothing was uploaded or deployed.
+
+These local checks do not establish deployed `workers.dev` routing, Cloudflare's Browser Integrity Check, deployed CLI/browser connections or the pending review 7.8 acceptance items. No Cloudflare account deployment or real-device test was performed for this change.
 
 ## Required manual release evidence
 

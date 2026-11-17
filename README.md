@@ -56,7 +56,7 @@ Keep `PUBLIC_ORIGIN` set to the origin only, for example `https://myserver.examp
 
 ## Cloudflare hosting
 
-The relay also runs on Cloudflare Workers and Durable Objects with the same browser and CLI protocol. Configure the custom domain and `PUBLIC_ORIGIN` in `wrangler.jsonc`, run `npm run test:cloudflare`, then deploy with `npm run deploy:cloudflare`. For local workerd use `npm run dev:cloudflare`. See [Cloudflare setup, privacy and operations](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
+The relay also runs on Cloudflare Workers and Durable Objects with the same browser and CLI protocol. Choose a custom domain or a `workers.dev` URL and set the matching `PUBLIC_ORIGIN` in `wrangler.jsonc`, run `npm run test:cloudflare`, then deploy with `npm run deploy:cloudflare`. For local workerd use `npm run dev:cloudflare`. See [Cloudflare setup, privacy and operations](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
 
 ## CLI
 
