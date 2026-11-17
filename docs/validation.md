@@ -10,10 +10,10 @@ The implementation includes automated tests and a CI workflow. Automated desktop
 | Type/static checks | `npm run typecheck`, `npm run lint`, `go vet ./...` in `cli/` |
 | Crypto | Appendix A proof/ciphertext fixtures, tampering, canonical encodings, sequence replay, Unicode limits |
 | Relay | Real HTTP/WS authentication, capabilities, candidate/commit/ready lifecycle, roles, expiry, rate/capacity/size bounds, shutdown and static security headers |
-| Web | Content classification, language keys/error messages, control schemas, camera QR input, confirmation before send, display-only and same-tab auto-open flows |
+| Web | Content classification, language keys/error messages, control schemas, base-path validation and URL generation, camera QR input, confirmation before send, display-only and same-tab auto-open flows |
 | CLI | Output encoding, strict options, crypto, single-message receipt, duplicate suppression, output/ack ordering and termination |
 | Interoperability | Actual TypeScript client and Go receiver with isolated TLS transport; no production TLS bypass |
-| Browsers | `npm run test:e2e`: Chromium, Firefox and WebKit with synthetic camera frames |
+| Browsers | `npm run test:e2e`: Chromium, Firefox and WebKit with synthetic camera frames; root and `/qrtoss/` builds behind a prefix-stripping HTTP/WebSocket test proxy |
 | Dependency checks | `npm audit`, `govulncheck ./...` in `cli/` |
 | Distribution | Four CGO-free CLI build targets; Dockerfile/Compose checks in CI |
 
@@ -27,11 +27,18 @@ Firefox could not launch its temporary test profile in this macOS environment; i
 
 The npm dependency audit reported no vulnerabilities. Go vulnerability analysis reported no reachable vulnerable symbols or imported vulnerable packages; its module-level report identified GO-2026-5024 in the Windows-only portion of `golang.org/x/sys v0.33.0`, which this macOS/Linux-only CLI does not import. Re-run both audits at release time; these results are not a permanent security guarantee.
 
+## Browser subpath implementation verification
+
+For the browser subpath implementation, all 38 Node unit/integration/interoperability tests passed, along with generated-definition, i18n and TypeScript checks and production builds for both `/` and `/qrtoss/`. All 16 Chromium and Firefox E2E tests passed across the two deployment paths. These tests exercised actual QR decoding through the Worker, prefix-stripping HTTP/WebSocket forwarding, encrypted transfer, pairing-fragment removal and home navigation.
+
+WebKit could not launch because required host shared libraries were unavailable, including after a temporary local dependency setup; its eight E2E tests are therefore unverified, rather than product test failures. The actual Apache configuration, TLS deployment and real-phone behavior were not verified in this environment.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.
 - Actual terminal apps on macOS/Linux, both CPU architectures: compact/full QR readability, colors, ambiguous character widths, redirected stdout, non-TTY stderr and SSH.
 - A real HTTPS self-hosted deployment: certificate trust, reverse-proxy WebSocket handling, configured Origin, CSP, restart behavior, no payload capture or persistent transfer storage.
+- A subpath browser deployment: `/qrtoss/` receiver, `/qrtoss/send` pairing handoff, camera decoder assets, home navigation and HTTP/WebSocket forwarding through the actual Apache configuration. Automated proxy tests do not validate a host's Apache configuration or TLS certificates.
 - Signed release assets, independent public-key instructions, launcher failure/concurrency behavior and Homebrew installation after real distribution URLs are selected.
 - Independent protocol/implementation review and accurate disclosure of external audit status.
 

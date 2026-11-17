@@ -40,6 +40,14 @@ PUBLIC_ORIGIN=https://qr.your-domain.example NODE_ENV=production npm start
 
 内部HTTPポートを、信頼するHTTPS/WSSリバースプロキシ経由で公開してください。本番ではHTTPSを必須とします。DB・Redis・STUN・TURNは不要です。
 
+既存サイトの `/qrtoss/` 配下でブラウザ版を公開する場合は、配置先を指定してビルドします。
+
+```sh
+QRTOSS_BASE_PATH=/qrtoss/ npm run build
+```
+
+`PUBLIC_ORIGIN` は `https://myserver.example` のように origin だけを指定します。Apache は HTTP・WebSocket の転送時に `/qrtoss` を取り除きます。設定例は [Apache のサブパス配信手順](docs/self-hosting.md#browser-deployment-under-an-apache-subpath)を参照してください。ベースパスはビルド時に確定し、既定値は `/` です。CLI と同梱の Docker Compose／Caddy 構成は引き続きドメイン直下を使用します。
+
 ## CLI
 
 単体の実行ファイルをビルドします。

@@ -1,5 +1,6 @@
 import { C, CipherChannel, decodeBase64, deriveKeys, makeProof, randomToken, verifyProof, type AppMessage, type Keys } from '../../packages/protocol/src/index';
 import errorCodes from '../../protocol/error-codes.json';
+import { createAppPaths, type AppPaths } from './paths';
 
 export type Mode = 'auto_open' | 'display_only' | 'stdout';
 export type Phase = 'creating' | 'waiting' | 'pairing' | 'connected' | 'disconnected';
@@ -82,7 +83,7 @@ export class Session {
   private queued=0;
   private queuedBytes=0;
   private fetchAbort?:AbortController;
-  constructor(role:'receiver'|'sender',private hooks:SessionHooks,mode:Mode='auto_open') { this.role=role;this.mode=mode; }
+  constructor(role:'receiver'|'sender',private hooks:SessionHooks,mode:Mode='auto_open',private paths:AppPaths=createAppPaths('/')) { this.role=role;this.mode=mode; }
   private current(g:number) { if (g!==this.generation || this.closed) throw new Error('STALE_SESSION'); }
   private phaseTo(phase:Phase) { this.phase=phase;this.hooks.phase(phase); }
   async startReceiver():Promise<void> {
@@ -92,7 +93,7 @@ export class Session {
       this.fetchAbort=new AbortController();
       const timer=setTimeout(()=>this.fetchAbort?.abort(),15000);
       let response:Response;
-      try { response=await fetch('/api/v1/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"v":1}',cache:'no-store',redirect:'error',signal:this.fetchAbort.signal}); }
+      try { response=await fetch(this.paths.rooms,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"v":1}',cache:'no-store',redirect:'error',signal:this.fetchAbort.signal}); }
       finally { clearTimeout(timer); }
       this.current(g);
       if (!response.ok) {
@@ -123,7 +124,7 @@ export class Session {
     } catch { this.failed(new Error('PAIR_LINK_INVALID'),this.generation); }
   }
   private connect(g:number):void {
-    const url=new URL('/ws',location.origin);url.protocol=location.protocol==='https:'?'wss:':'ws:';
+    const url=new URL(this.paths.socket,location.origin);url.protocol=location.protocol==='https:'?'wss:':'ws:';
     const ws=new WebSocket(url,'qrtoss.v1');this.socket=ws;
     ws.onopen=()=> {
       if(g!==this.generation || this.closed) return;
@@ -194,7 +195,7 @@ export class Session {
       this.pairingDeadline=time()+Number(m.pairingExpiresAt)-Number(m.serverTime);
       if(this.role==='receiver') {
         this.phaseTo('waiting');
-        this.hooks.pairing?.(`${location.origin}/send#v=1&r=${this.room}&j=${this.join}&k=${this.psk}`,this.pairingDeadline);
+        this.hooks.pairing?.(`${location.origin}${this.paths.sender}#v=1&r=${this.room}&j=${this.join}&k=${this.psk}`,this.pairingDeadline);
       } else {this.peer=String(m.peer);this.candidateDeadline=time()+Number(m.candidateExpiresAt)-Number(m.serverTime);this.phaseTo('pairing');}
       return;
     }

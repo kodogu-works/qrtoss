@@ -1,11 +1,66 @@
 import {test,expect,type Page,type Browser} from '@playwright/test';
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
+import {execFileSync} from 'node:child_process';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {createServer,request} from 'node:http';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import type {Socket} from 'node:net';
 import {createRelay} from '../../server/src/index.ts';
-const base='http://127.0.0.1:18972';
-let relay:ReturnType<typeof createRelay>;
-test.beforeAll(async()=>{relay=createRelay({publicOrigin:base,allowHttpLoopback:true,staticDir:'dist/web'});await relay.listen(18972);});
-test.afterAll(async()=>{await relay.close();});
+
+/** Match the production proxy contract: strip the mount from HTTP and WS paths. */
+async function deployment(basePath:string,staticDir:string){
+  let target='';
+  const sockets=new Set<Socket>();
+  const proxy=createServer((req,res)=>{
+    if(!req.url?.startsWith(basePath)){res.writeHead(404).end();return;}
+    const upstream=request(target+'/'+req.url.slice(basePath.length),{method:req.method,headers:req.headers},response=>{
+      res.writeHead(response.statusCode??502,response.headers);response.pipe(res);
+    });
+    upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});
+    req.pipe(upstream);
+  });
+  proxy.on('connection',socket=>{sockets.add(socket);socket.on('error',()=>socket.destroy());socket.on('close',()=>sockets.delete(socket));});
+  proxy.on('upgrade',(req,socket,head)=>{
+    if(!req.url?.startsWith(basePath)){socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');return;}
+    const upstream=request(target+'/'+req.url.slice(basePath.length),{headers:req.headers});
+    upstream.on('upgrade',(response,backend,backendHead)=>{
+      socket.write(`HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\n`);
+      for(let i=0;i<response.rawHeaders.length;i+=2)socket.write(`${response.rawHeaders[i]}: ${response.rawHeaders[i+1]}\r\n`);
+      socket.write('\r\n');
+      if(backendHead.length)socket.write(backendHead);
+      if(head.length)backend.write(head);
+      backend.on('error',()=>socket.destroy());socket.on('error',()=>backend.destroy());
+      socket.on('close',()=>backend.destroy());backend.on('close',()=>socket.destroy());
+      socket.pipe(backend).pipe(socket);
+    });
+    upstream.on('response',response=>{response.resume();socket.end(`HTTP/1.1 ${response.statusCode} Rejected\r\nConnection: close\r\n\r\n`);});
+    upstream.on('error',()=>socket.destroy());upstream.end();
+  });
+  await new Promise<void>(resolve=>proxy.listen(0,'127.0.0.1',resolve));
+  const address=proxy.address();if(!address||typeof address==='string')throw new Error('LISTEN_FAILED');
+  const origin=`http://127.0.0.1:${address.port}`;
+  const relay=createRelay({publicOrigin:origin,allowHttpLoopback:true,staticDir});
+  target=await relay.listen();
+  return {base:origin+basePath,origin,async close(){
+    for(const socket of sockets)socket.destroy();
+    await Promise.all([relay.close(),new Promise<void>(resolve=>proxy.close(()=>resolve()))]);
+  }};
+}
+
+for(const basePath of ['/','/qrtoss/'])test.describe(`deployment ${basePath}`,()=>{
+let host:Awaited<ReturnType<typeof deployment>>;
+let directory:string;
+let base:string;
+test.beforeAll(async()=>{
+  directory=await mkdtemp(join(tmpdir(),'qrtoss-e2e-'));
+  execFileSync(process.execPath,['node_modules/vite/bin/vite.js','build','--config','web/vite.config.ts','--outDir',directory,'--emptyOutDir'],{
+    env:{...process.env,QRTOSS_BASE_PATH:basePath},stdio:'pipe',
+  });
+  host=await deployment(basePath,directory);base=host.base;
+});
+test.afterAll(async()=>{await host?.close();if(directory)await rm(directory,{recursive:true,force:true});});
 async function pairingURL(page:Page){
   await expect(page.locator('#status')).toHaveText(/Waiting for your phone/);
   await expect(page.locator('#qr-loading')).toBeHidden();
@@ -17,6 +72,8 @@ async function pairingURL(page:Page){
 async function fakeCamera(page:Page,payload:string){
   const data=await QRCode.toDataURL(payload,{width:512,margin:4,errorCorrectionLevel:'M'});
   await page.addInitScript(({data})=>{
+    // Exercise the decoder Worker, including its lazy-loaded production chunk.
+    Object.defineProperty(window,'BarcodeDetector',{value:{getSupportedFormats:async()=>[]},configurable:true});
     const fixture=window as unknown as {qrCameraTracks:MediaStreamTrack[]};fixture.qrCameraTracks=[];
     Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{
       const img=new Image();img.src=data;await img.decode();const c=document.createElement('canvas');c.width=c.height=512;
@@ -30,8 +87,12 @@ async function fakeCamera(page:Page,payload:string){
 async function pages(browser:Browser,payload:string){
   const rc=await browser.newContext({locale:'en-US'}),sc=await browser.newContext({locale:'en-US'});
   const r=await rc.newPage(),s=await sc.newPage();const failures:string[]=[];
+  const requestPaths:string[]=[],socketPaths:string[]=[];
+  let decoderWorkers=0;s.on('worker',()=>decoderWorkers++);
   const cspViolations:{directive:string;blockedURI:string;sourceFile:string;line:number;sample:string}[]=[];
   for(const page of [r,s]) {
+    page.on('request',request=>{const url=new URL(request.url());if(url.protocol==='http:'&&url.origin===host.origin)requestPaths.push(url.pathname);});
+    page.on('websocket',socket=>socketPaths.push(new URL(socket.url()).pathname));
     await page.exposeFunction('recordCspViolation',(violation:typeof cspViolations[number])=>cspViolations.push(violation));
     await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',event=>{
       void (window as unknown as {recordCspViolation:(violation:unknown)=>Promise<void>}).recordCspViolation({directive:event.violatedDirective,blockedURI:event.blockedURI,sourceFile:event.sourceFile,line:event.lineNumber,sample:event.sample});
@@ -39,22 +100,30 @@ async function pages(browser:Browser,payload:string){
   }
   r.on('pageerror',e=>failures.push(e.message));s.on('pageerror',e=>failures.push(e.message));
   await fakeCamera(s,payload);await r.goto(base);const url=await pairingURL(r);
-  await s.goto(url);await expect(s).toHaveURL(base+'/send');
+  expect(new URL(url).origin+new URL(url).pathname).toBe(base+'send');
+  await s.goto(url);await expect(s).toHaveURL(base+'send');
   await expect(s.locator('#status')).toHaveText('Connected securely');await expect(r.locator('#status')).toHaveText('Connected securely');
-  return {r,s,rc,sc,failures,url,cspViolations};
+  return {r,s,rc,sc,failures,url,cspViolations,requestPaths,socketPaths,decoderWorkers:()=>decoderWorkers};
 }
 test('camera QR → explicit confirmation → encrypted transfer to display-only receiver',async({browser})=>{
-  const text='https://example.org/scan?qrtoss=1';const {r,s,rc,sc,failures,cspViolations}=await pages(browser,text);
+  const text='https://example.org/scan?qrtoss=1';const {r,s,rc,sc,failures,cspViolations,requestPaths,socketPaths,decoderWorkers}=await pages(browser,text);
   try{
     await r.locator('input[value="display_only"]').check();
     await s.bringToFront();await s.locator('#scan').click();await expect(s.locator('#sender-text')).toHaveText(text);
     expect(await s.evaluate(()=>{const tracks=(window as unknown as {qrCameraTracks:MediaStreamTrack[]}).qrCameraTracks;return tracks.length>0&&tracks.every(track=>track.readyState==='ended');})).toBe(true);
     await expect(r.locator('#receiver-text')).toHaveText('');
     await s.locator('#send').click();await expect(s.locator('#status')).toHaveText('Received by the other device');
-    await expect(r.locator('#receiver-text')).toHaveText(text);await expect(r).toHaveURL(base+'/');
+    await expect(r.locator('#receiver-text')).toHaveText(text);await expect(r).toHaveURL(base);
     await expect(r.locator('#open')).toBeEnabled();expect(failures).toEqual([]);expect(cspViolations).toEqual([]);
     expect(await r.evaluate(()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage)}))).toEqual({local:[],session:[]});
     expect(await s.evaluate(()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage)}))).toEqual({local:[],session:[]});
+    expect(decoderWorkers()).toBeGreaterThan(0);
+    expect(requestPaths.every(path=>path.startsWith(basePath))).toBe(true);
+    expect(requestPaths).toContain(basePath+'api/v1/rooms');
+    expect(socketPaths).toEqual([basePath+'ws',basePath+'ws']);
+    await expect(s.locator('a.wordmark')).toHaveAttribute('href',basePath);
+    await s.locator('a.wordmark').click();await expect(s).toHaveURL(base);
+    await expect(s.locator('#qr')).toBeVisible();
   }finally{await rc.close();await sc.close();}
 });
 test('default mode opens an accepted web URL in the same tab after ack_seen',async({browser})=>{
@@ -77,6 +146,7 @@ test('inert content stays literal, language switches and mobile layout fits',asy
   }finally{await rc.close();await sc.close();}
 });
 test('invalid pairing fragment is removed and no connection is attempted',async({page})=>{
-  let sockets=0;page.on('websocket',()=>sockets++);await page.goto(base+'/send#v=1&r=secret&j=x&k=x');
-  await expect(page).toHaveURL(base+'/send');await expect(page.locator('#error')).toBeVisible();expect(sockets).toBe(0);
+  let sockets=0;page.on('websocket',()=>sockets++);await page.goto(base+'send#v=1&r=secret&j=x&k=x');
+  await expect(page).toHaveURL(base+'send');await expect(page.locator('#error')).toBeVisible();expect(sockets).toBe(0);
+});
 });

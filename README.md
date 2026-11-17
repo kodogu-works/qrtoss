@@ -40,6 +40,14 @@ PUBLIC_ORIGIN=https://qr.your-domain.example NODE_ENV=production npm start
 
 Place the internal HTTP listener behind a trusted HTTPS/WSS reverse proxy. HTTPS is mandatory in production. No database, Redis, STUN, or TURN service is required.
 
+For a browser deployment under an existing site's `/qrtoss/` path, build with:
+
+```sh
+QRTOSS_BASE_PATH=/qrtoss/ npm run build
+```
+
+Keep `PUBLIC_ORIGIN` set to the origin only, for example `https://myserver.example`. Configure Apache to remove `/qrtoss` before forwarding HTTP and WebSocket requests to the app. See the [Apache subpath deployment instructions](docs/self-hosting.md#browser-deployment-under-an-apache-subpath) for the complete configuration. The base path is fixed at build time; the default is `/`. The CLI and the supplied Docker Compose/Caddy setup continue to use the origin root.
+
 ## CLI
 
 Build the standalone executable:

@@ -4,12 +4,14 @@ import { classify } from './content';
 import { chooseLanguage, errorText, translate, type Key, type Language } from './i18n';
 import { Scanner } from './scanner';
 import { Session, type Mode, type Phase } from './session';
+import { createAppPaths } from './paths';
 import './style.css';
 
-const sender=location.pathname.replace(/\/$/,'')==='/send';
+const paths=createAppPaths(import.meta.env.BASE_URL);
+const sender=location.pathname.replace(/\/$/,'')===paths.sender;
 // Fragment is removed before any other asynchronous work, including error paths.
 let fragment=sender?location.hash:'';
-if(sender) history.replaceState(null,'','/send');
+if(sender) history.replaceState(null,'',paths.sender);
 let saved:string|null=null;try{saved=localStorage.getItem('qrtoss.language');}catch{/* storage may be disabled */}
 let language=chooseLanguage(navigator.languages,saved);
 let session:Session|undefined;
@@ -39,7 +41,7 @@ let connectionGeneration=0;
 
 const root=document.querySelector<HTMLDivElement>('#app')!;
 root.innerHTML=`
-<div class="shell"><header class="topbar"><a class="wordmark" href="/" aria-label="qrtoss home"><span class="brand-symbol" aria-hidden="true">↗</span>qrtoss<span class="brand-dot">.</span></a><label class="language"><span class="sr-only" data-i18n="language"></span><select id="language" aria-label="Language"><option value="en">English</option><option value="ja">日本語</option><option value="es">Español</option></select></label></header>
+<div class="shell"><header class="topbar"><a class="wordmark" href="${paths.home}" aria-label="qrtoss home"><span class="brand-symbol" aria-hidden="true">↗</span>qrtoss<span class="brand-dot">.</span></a><label class="language"><span class="sr-only" data-i18n="language"></span><select id="language" aria-label="Language"><option value="en">English</option><option value="ja">日本語</option><option value="es">Español</option></select></label></header>
 <main><div class="eyebrow"><span class="little-line"></span><span data-i18n="about"></span></div><h1 data-i18n="${sender?'sendTitle':'receive'}"></h1><p class="intro" data-i18n="${sender?'senderIntro':'receiverIntro'}"></p>
 <div class="workspace"><section class="card primary-card"><div class="card-heading"><span class="step">01</span><h2 data-i18n="${sender?'preview':'stepOne'}"></h2><span class="connection-icon" aria-hidden="true">⌁</span></div>
 <div class="connection-status" role="status" aria-live="polite"><span id="status-dot" class="status-dot"></span><span id="status"></span></div>
@@ -137,7 +139,7 @@ function attach(role:'receiver'|'sender'):Session {
     },
     async message(message) {if(mine!==connectionGeneration) return;await onMessage(message,value,mine);},
     error(code) {if(mine!==connectionGeneration) return;if(!pending?.settled && !hasPreview) errorCode=code;else if(!['NETWORK_DISCONNECTED','PEER_CLOSED'].includes(code)) errorCode=code;render();},
-  },mode);
+  },mode,paths);
   session=value;return value;
 }
 async function newReceiver():Promise<void> {

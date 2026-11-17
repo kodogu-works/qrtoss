@@ -92,7 +92,7 @@
 - ファイル転送、複数送信端末・複数受信端末の同時参加、CLIからの送信。
 - サーバーによるQR画像解析、URLのタイトル・サムネイル取得、短縮URLの展開。
 - 外部広告、外部アクセス解析、実行時の外部翻訳API、自動クラッシュレポート。
-- 公開originのサブパスへの配備。
+- CLIのサブパス配備への接続、およびビルド済みブラウザアセットの配置先を再ビルドなしで起動時に切り替えること。ブラウザ版のビルド時指定によるサブパス配備は対象に含む。
 - CLIのWindows対応、常駐デーモン、クリップボードの自動操作、受信内容のシェル評価・実行、URLやアプリの自動起動、`--insecure`等のTLS検証の無効化。
 
 ## 2. 要件の対応表
@@ -213,7 +213,7 @@ CLIの暗号は、`crypto/sha256`、`crypto/hmac`、`crypto/hkdf`、`crypto/aes`
 ### 3.3 配備上の前提
 
 - フロントエンド、API、`/ws`を同じ公開originで提供する。
-- 公開URLのルートパス配備を初版の対象とする。サブパス配備は将来対応。
+- ブラウザ版は公開URLのルートパス配備に加え、ビルド時の `QRTOSS_BASE_PATH`（既定値 `/`）で指定するサブパス配備に対応する。例は `/qrtoss/`。リバースプロキシが接頭辞を取り除き、Nodeサーバーへ既存のルートパスで転送する。CLIと同梱Compose/Caddy構成はルートパス配備を対象とする。
 - 同じWi-Fiへの接続は不要。送信端末と受信側（ブラウザまたはCLI）から公開originのHTTPS/WSSに接続できることが条件。CLIが外部からの接続を待ち受ける必要はない。
 - 初版は1プロセスのメモリ内room管理とする。複数プロセスや複数ノードへの自動スケールは対象外。
 - プロセス再起動時には全roomを失効させ、再ペアリングを求める。
@@ -599,10 +599,11 @@ https://qrtoss.example/send#v=1&r=<roomId>&j=<senderJoinCap>&k=<psk>
 ```
 
 - `https://qrtoss.example`は配備先の`PUBLIC_ORIGIN`へ置換する。CLIは`--server`から正規化した公開origin（第14.5節）を使う。
+- ブラウザ版をサブパスへ配備する場合は、送信ページにもビルド時のベースパスを付ける。`QRTOSS_BASE_PATH=/qrtoss/` なら `https://qrtoss.example/qrtoss/send#v=1&r=…&j=…&k=…` となる。`PUBLIC_ORIGIN`とOriginヘッダーにはパスを含めない。CLIはこのサブパス配備には対応しない。
 - `receiverCap`はURL・QRへ含めない。
 - `psk`をパス、クエリ、HTTPヘッダー、WSSメッセージへ含めない。
 - 接続用QRは受信側の内部（ブラウザまたはCLI）で生成し、画像生成APIや外部コマンドへ渡さない。
-- 送信ページはフラグメントを読み取り、検証に必要な値をメモリへコピーした直後に`history.replaceState(null, "", "/send")`で除去する。エラー時にも除去する。
+- 送信ページはフラグメントを読み取り、検証に必要な値をメモリへコピーした直後に`history.replaceState`で除去する。置換先は配備先の送信パス（既定値 `/send`、上記例では `/qrtoss/send`）とし、エラー時にも除去する。
 - 文字列全体をconsole、エラー例外、画面解析へ渡さない。
 - 同じキーの重複、未知のキー、欠落、`v`が`1`以外、長さ・文字種の不一致を拒否する。上記順序で生成し、受信時は順序を問わない。
 - 接続用URLの全長は2,048文字以下とする。fragmentの除去は、OSカメラやブラウザがすでに扱ったURLの履歴まで消す保証ではない。
@@ -699,6 +700,8 @@ IVは12バイト。AES-GCMは同じ鍵でIVを再利用してはならない。�
 
 ### 10.1 HTTPルート
 
+以下はNodeサーバーが受け付けるパスである。ブラウザ版のサブパス配備では、公開側でベースパスを前置し、プロキシがそれを除去する。例えば公開側の `POST /qrtoss/api/v1/rooms` は内部の `POST /api/v1/rooms` へ、公開側の `/qrtoss/ws` は内部の `/ws` へ転送する。Originの完全一致検査はサブパス配備でも変更しない。
+
 | メソッド・パス | 用途 | 正常時 |
 | --- | --- | --- |
 | `GET /` | 受信画面 | HTML、200 |
@@ -748,7 +751,7 @@ CLI等のブラウザ以外のクライアントも、ブラウザと同じAPI�
 
 ### 10.3 WSS共通規則
 
-- URLは同じoriginの`/ws`を`wss:`にしたもの。トークンをクエリやsubprotocolへ入れない。
+- URLは同じoriginの`/ws`を`wss:`にしたもの。ブラウザ版のサブパス配備ではベースパスを前置する（例：`wss://qrtoss.example/qrtoss/ws`）。トークンをクエリやsubprotocolへ入れない。
 - subprotocolは`qrtoss.v1`のみ。対応しない要求をupgradeしない。
 - JSONのテキストメッセージだけを扱う。バイナリメッセージを拒否する。
 - `ws`の`perMessageDeflate`を無効化する。
@@ -1187,7 +1190,7 @@ Goの標準`flag`パッケージは、同じオプションの重複を後勝ち
 
 `--server`は、送信ページと共通API/WSSを提供する公開サービスのoriginを指定する。API専用URLや、CLI上のローカル待ち受けアドレスを意味しない。
 
-- 形式は`https://ホスト[:ポート][/]`だけを受け付ける。HTTPSを必須とし、userinfo、`/`以外のパス、query、fragmentを拒否する。サブパス配備は初版の対象外。
+- 形式は`https://ホスト[:ポート][/]`だけを受け付ける。HTTPSを必須とし、userinfo、`/`以外のパス、query、fragmentを拒否する。CLIのサブパス配備への接続は初版の対象外。
 - ホスト名はASCIIで指定する。国際化ドメイン名はpunycode形式で指定する。末尾ドットを含むホスト名を拒否する。
 - 公開originへ正規化する。scheme・ホスト名を小文字にし、443番ポートを省略する（RFC 6454のASCII直列化）[S35]。例：`HTTPS://QRTOSS.Example:443/` → `https://qrtoss.example`。
 - 正規化したoriginを、`Origin`ヘッダー、`POST {origin}/api/v1/rooms`、`wss://{ホスト[:ポート]}/ws`、接続用URL`{origin}/send#…`に用いる。これ以外のパスを独自に組み立てない。
@@ -1720,6 +1723,8 @@ SIGTERM時は新規HTTP room作成とWS受付を止め、readyzを503にする�
 第4.1節の暗号・サイズ・タイムアウト値は`protocol/`の共通定義として管理し、初版では個別の環境変数で片側だけ変更しない。運用制限を調整する変数は`.env.example`と自己ホスト手順へすべて記載する。
 
 ### 16.3 Compose・プロキシの要件
+
+ブラウザ版のサブパス配備では、`QRTOSS_BASE_PATH=/qrtoss/ npm run build` のようにビルド時に配置先を指定し、プロキシでその接頭辞を取り除く。設定値は先頭・末尾が `/` のパスに制限し、各セグメントの文字はASCII英数字と `._~-` だけを許可する。空セグメント、`.`、`..`、外部URL、クエリ、フラグメント、percent-encodingを拒否する。設定は配信アセットへ埋め込まれるため、起動時に変更しても配置先は切り替わらない。Apacheの設定例は[運用手順](self-hosting.md#browser-deployment-under-an-apache-subpath)を参照する。同梱のCompose/Caddy構成は引き続きルートパス配備とする。
 
 実装時に`Dockerfile`、`compose.yaml`、`deploy/Caddyfile`、`.env.example`を同梱し、次の条件を満たす。
 

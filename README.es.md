@@ -29,6 +29,14 @@ docker compose up -d --build
 
 No se necesita base de datos. Solo el proxy Caddy expone puertos públicos y conserva los certificados TLS. El proceso de la aplicación mantiene las conexiones en memoria. Consulta [las instrucciones de operación](docs/self-hosting.md).
 
+Para publicar la versión de navegador bajo `/qrtoss/` en un sitio existente:
+
+```sh
+QRTOSS_BASE_PATH=/qrtoss/ npm run build
+```
+
+Mantén `PUBLIC_ORIGIN` como origen sin ruta, por ejemplo `https://myserver.example`. Apache debe quitar `/qrtoss` al reenviar HTTP y WebSocket a la aplicación. Consulta la [configuración de Apache para una subruta](docs/self-hosting.md#browser-deployment-under-an-apache-subpath). La ruta se fija al compilar y su valor predeterminado es `/`. La CLI y la configuración incluida de Docker Compose/Caddy siguen usando la raíz del origen.
+
 ## Cliente de línea de comandos
 
 ```sh
