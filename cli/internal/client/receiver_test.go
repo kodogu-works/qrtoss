@@ -203,6 +203,96 @@ func TestReceiverCommitRequiresProof(t *testing.T) {
 	}), 4)
 }
 
+func TestReceiverWaitsForServerDeadlines(t *testing.T) {
+	for _, stage := range []string{"confirming", "activating", "connected"} {
+		t.Run(stage, func(t *testing.T) {
+			f := newReceiverFixture(t, io.Discard)
+			f.advance(stage)
+			now := time.Now().Add(31 * time.Minute)
+			// Pongs and recent activity can arrive while the server's ACTIVE or
+			// touch notification is still delayed beyond the advertised deadline.
+			f.session.lastPong = now
+			if connection := f.session.connection(); connection != nil {
+				connection.activity.record(now)
+			}
+			f.keepReceiving(f.session.onTick(now))
+			if f.socket.count("room.close") != 0 {
+				t.Fatal("server deadlines must not close the room locally")
+			}
+		})
+	}
+}
+
+func TestReceiverReadyExchangeIgnoresAdvertisedDeadline(t *testing.T) {
+	f := newReceiverFixture(t, io.Discard)
+	f.advance("committing")
+	// A delayed notification can carry no remaining ready time. The relay
+	// decides whether confirm/ready/ACTIVE still belong to a live room.
+	f.keepReceiving(f.server("pair.committed", map[string]any{
+		"peer": f.peer, "serverTime": 10000, "readyExpiresAt": 10000, "idleExpiresAt": 1800000,
+	}))
+	f.keepReceiving(f.session.onTick(time.Now()))
+	f.keepReceiving(f.app(map[string]any{"type": "ready"}))
+	f.keepReceiving(f.session.onTick(time.Now()))
+	if f.socket.count("pair.confirm") != 1 || f.socket.count("pair.active") != 1 || f.socket.count("room.close") != 0 {
+		t.Fatal("ready exchange must wait for the server's decision")
+	}
+}
+
+func TestReceiverServerClosureReason(t *testing.T) {
+	for _, test := range []struct {
+		stage, code, key string
+	}{
+		{"confirming", "READY_TIMEOUT", "DISCONNECTED"},
+		{"activating", "READY_TIMEOUT", "DISCONNECTED"},
+		{"connected", "SESSION_EXPIRED", "SESSION_EXPIRED"},
+	} {
+		t.Run(test.stage, func(t *testing.T) {
+			f := newReceiverFixture(t, io.Discard)
+			f.advance(test.stage)
+			result := f.server("room.closed", map[string]any{"code": test.code})
+			expectReceiveFailure(t, result, 3)
+			if result.code != 1 || result.err.Error() != test.key {
+				t.Fatalf("server closure must renew the room with %s: %+v", test.key, result)
+			}
+		})
+	}
+}
+
+func TestReceiverLocalTimeoutsRemainActive(t *testing.T) {
+	for _, stage := range []string{"confirming", "activating", "connected"} {
+		for _, cause := range []string{"command timeout", "heartbeat"} {
+			t.Run(stage+"/"+cause, func(t *testing.T) {
+				f := newReceiverFixture(t, io.Discard)
+				f.advance(stage)
+				now := time.Now().Add(46 * time.Second)
+				want := 3
+				if cause == "command timeout" {
+					f.session.deadline = now
+					f.session.lastPong = now
+					want = 124
+				}
+				expectReceiveFailure(t, f.session.onTick(now), want)
+			})
+		}
+	}
+}
+
+func TestReceiverOwnIdleExpiry(t *testing.T) {
+	f := newReceiverFixture(t, io.Discard)
+	f.advance("connected")
+	now := f.session.connection().activity.last.Add(30 * time.Minute)
+	f.session.lastPong = now
+	result := f.session.onTick(now)
+	expectReceiveFailure(t, result, 3)
+	if result.code != 1 || result.err.Error() != "SESSION_EXPIRED" {
+		t.Fatalf("local inactivity must expire the session: %+v", result)
+	}
+	if f.socket.count("room.close") != 1 || str(f.socket.messages[len(f.socket.messages)-1], "reason") != "idle_timeout" {
+		t.Fatal("local inactivity must close the room with idle_timeout")
+	}
+}
+
 type receiverBlockedOutput struct {
 	started, release, finished chan struct{}
 	startOnce                  sync.Once

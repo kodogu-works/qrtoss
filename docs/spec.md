@@ -287,6 +287,8 @@ commitが成功した後は、この300秒の期限を接続済みセッショ�
 
 サーバーはcommit時点および受信側の正当な`room.touch`を受けた時刻から無操作期限を管理し、更新後の期限を両端へ通知する。受信側も自己の最終活動から30分を越えていれば`room.close`（`idle_timeout`）で終了する。送信側は独自の無操作期限を設けず、サーバーの失効・切断通知とheartbeatに従う。
 
+通知された`idleExpiresAt`へのローカル到達だけでは切断せず、サーバーの`room.closed`（`SESSION_EXPIRED`）を待つ。期限直前のtouchに対する`room.touched`が遅れても、延長済みのroomを切断しない。受信側自身の最終活動から30分の判定は維持し、サーバーが応答しない場合は第10.6節のheartbeatで通信断を検出する。
+
 ### 4.5 QR再生成と切断
 
 - Web受信ページの「新しいQRコードを表示」は旧roomを閉じ（`user_reset`）、新しいroom・capability・PSKを作成する。
@@ -900,6 +902,8 @@ commit前のcandidate離脱・失効・proof不一致では、そのcandidateだ
 - 現在時刻が候補期限未満である。
 
 成功した瞬間に`senderJoinCap`の照合情報を破棄し、`readyExpiresAt = commit時点 + 10秒`とする。commitがQR失効直前に成功した場合、ready交換はcommitからの10秒以内に完了すればよい。初回QR期限を再適用しない。
+
+ready期限の判定はサーバーが行う。クライアントは`readyExpiresAt`へのローカル到達だけで切断したり、`pair.confirm`・`ready_ack`・`pair.active`の送信を打ち切ったり、受信した`ready`をプロトコル違反にしたりしない。期限内に成立したACTIVEの通知が遅れる場合も、通知を受けて接続を完了する。失効は`room.closed`（`READY_TIMEOUT`）で確定し、サーバーが応答しない場合は第10.6節のheartbeatで通信断を検出する。
 
 commit後の暗号化ready交換中は、サーバーは各方向のseq 0を1通ずつだけ中継する。通常のアプリメッセージは両端がACTIVEを確認した後に送る。異なるソケット間の通知順序に依存せず、各条件がそろうまで待つ。
 

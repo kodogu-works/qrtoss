@@ -115,7 +115,7 @@ after(async () => {
 async function start(
   format: 'text' | 'jsonl',
   delay = 0,
-  scenario?: 'commit' | 'lateProof',
+  scenario?: 'commit' | 'lateProof' | 'ready' | 'idle',
   timeout = '15',
 ) {
   const secure = createServer({ key, cert: certificate });
@@ -126,14 +126,21 @@ async function start(
   let clock = 0,
     firstRoom = true,
     serverExpired = false,
-    prematureClose = false;
+    prematureClose = false,
+    touches = 0;
   const delayedProof = Promise.withResolvers<void>();
+  const delayedNotification = Promise.withResolvers<void>();
   const relay = createRelay({
     publicOrigin: origin,
     ...(scenario ? { now: () => clock, wallNow: () => 1700000000000 + clock } : {}),
   });
   secure.on('request', (req, res) => {
-    if (scenario && firstRoom && req.method === 'POST' && req.url === '/api/v1/rooms') {
+    if (
+      (scenario === 'commit' || scenario === 'lateProof') &&
+      firstRoom &&
+      req.method === 'POST' &&
+      req.url === '/api/v1/rooms'
+    ) {
       firstRoom = false;
       // Advance after room creation and before either WebSocket is accepted, so the
       // fake jump cannot accidentally trigger the unauthenticated-socket timeout.
@@ -149,6 +156,35 @@ async function start(
           if (type === 'room.close' && !serverExpired) prematureClose = true;
         },
         async receiverMessage(message, forward) {
+          // Shorten only the advertised remaining time so these regressions
+          // exercise the real CLI without waiting 10 seconds or 30 minutes.
+          if (scenario === 'ready' && message.type === 'pair.committed') {
+            forward({ ...message, readyExpiresAt: message.serverTime + 250 });
+            return;
+          }
+          if (scenario === 'ready' && message.type === 'pair.active') {
+            // ACTIVE was accepted in time; it remains valid after the relay's
+            // original ready deadline, even while its notification is delayed.
+            clock = 10001;
+            relay.sweep();
+            await new Promise((resolve) => setTimeout(resolve, 750));
+            forward();
+            delayedNotification.resolve();
+            return;
+          }
+          if (scenario === 'idle' && message.type === 'room.touched') {
+            touches++;
+            if (touches === 1) {
+              forward({ ...message, idleExpiresAt: message.serverTime + 250 });
+              return;
+            }
+            if (touches === 2) {
+              await new Promise((resolve) => setTimeout(resolve, 750));
+              forward();
+              delayedNotification.resolve();
+              return;
+            }
+          }
           if (scenario === 'commit' && message.type === 'pair.committed') {
             clock = 300001;
             relay.sweep();
@@ -250,10 +286,16 @@ async function start(
     await sender.app({ type: 'ready' });
     assert.deepEqual(await sender.receive(), { type: 'ready_ack' });
     await sender.next('pair.active');
+    if (scenario === 'ready') await delayedNotification.promise;
     assert.deepEqual(await sender.receive(), { type: 'mode', value: 'stdout' });
-    if (scenario === 'commit') {
+    if (scenario === 'idle') {
+      await sender.next('room.touched');
+      await sender.app({ type: 'activity' });
+      await delayedNotification.promise;
+    }
+    if (scenario === 'commit' || scenario === 'ready' || scenario === 'idle') {
       assert.equal(prematureClose, false);
-      assert.doesNotMatch(diagnostics, /QR_REFRESHED|PROTOCOL_ERROR/);
+      assert.doesNotMatch(diagnostics, /DISCONNECTED|SESSION_EXPIRED|QR_REFRESHED|PROTOCOL_ERROR/);
     }
     return {
       sender,
@@ -261,6 +303,12 @@ async function start(
       exited,
       output: () => output,
       diagnostics: () => diagnostics,
+      expireIdle() {
+        assert.equal(scenario, 'idle');
+        serverExpired = true;
+        clock += 1800000;
+        relay.sweep();
+      },
       async close() {
         sender?.close();
         if (child.exitCode === null) child.kill('SIGTERM');
@@ -430,6 +478,43 @@ for (const scenario of ['commit', 'lateProof'] as const) {
     }
   });
 }
+
+for (const scenario of ['ready', 'idle'] as const) {
+  test(`real Go receiver: delayed ${scenario === 'ready' ? 'ACTIVE' : 'touch'} notification does not expire the session locally`, {
+    timeout: 30000,
+  }, async () => {
+    const session = await start('text', 0, scenario);
+    try {
+      const id = randomToken(16);
+      await session.sender.app({ type: 'data', id, textB64: encodeText('delayed notification') });
+      assert.deepEqual(await session.sender.receive(), { type: 'ack', id, status: 'received' });
+      await session.sender.app({ type: 'ack_seen', id });
+      assert.equal(await session.exited, 0);
+      assert.equal(session.output(), 'delayed notification\n');
+      assert.doesNotMatch(session.diagnostics(), /DISCONNECTED|SESSION_EXPIRED|PROTOCOL_ERROR/);
+    } finally {
+      await session.close();
+    }
+  });
+}
+
+test('real Go receiver: server idle expiry reports SESSION_EXPIRED and renews the QR', {
+  timeout: 30000,
+}, async () => {
+  const session = await start('text', 0, 'idle');
+  try {
+    const renewed = pairingUrl(session.child);
+    session.expireIdle();
+    await renewed;
+    assert.match(session.diagnostics(), /\[SESSION_EXPIRED\]/);
+    assert.match(session.diagnostics(), /\[QR_REFRESHED\]/);
+    assert.doesNotMatch(session.diagnostics(), /\[DISCONNECTED\]|PROTOCOL_ERROR/);
+    assert.equal(session.output(), '');
+    assert.equal(session.child.exitCode, null);
+  } finally {
+    await session.close();
+  }
+});
 
 test('permanent rejection retains exit 6 after a protocol violation', {
   timeout: 30000,

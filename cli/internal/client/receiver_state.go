@@ -32,19 +32,14 @@ type receiverPeer struct {
 	cipher Cipher
 }
 
-type receiverConfirming struct {
-	*receiverPeer
-	deadline time.Time
-}
+// The relay decides ready expiry, including while an ACTIVE notification is delayed.
+type receiverConfirming struct{ *receiverPeer }
 
-type receiverActivating struct {
-	*receiverPeer
-	deadline time.Time
-}
+type receiverActivating struct{ *receiverPeer }
 
 type receiverConnected struct {
 	*receiverPeer
-	idleDeadline time.Time
+	idleDeadline time.Time // Used only to schedule urgent touches, not to expire the room.
 	activity     receiverActivity
 }
 

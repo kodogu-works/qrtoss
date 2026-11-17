@@ -103,14 +103,14 @@ func (s *receiver) onCipher(raw []byte) *receiveResult {
 }
 
 func (s *receiver) onReady(state *receiverConfirming, inner map[string]json.RawMessage) *receiveResult {
-	if str(inner, "type") != "ready" || state.cipher.Recv != 1 || !time.Now().Before(state.deadline) {
+	if str(inner, "type") != "ready" || state.cipher.Recv != 1 {
 		return s.violation()
 	}
-	s.state = &receiverActivating{receiverPeer: state.receiverPeer, deadline: state.deadline}
+	s.state = &receiverActivating{receiverPeer: state.receiverPeer}
 	if err := s.sendCipher(map[string]any{"type": "ready_ack"}); err != nil {
 		return receiveEnd(1, fail(3, "DISCONNECTED"))
 	}
-	if err := s.control("pair.active", map[string]any{"peer": state.id}, state.deadline); err != nil {
+	if err := s.control("pair.active", map[string]any{"peer": state.id}, time.Time{}); err != nil {
 		return receiveEnd(1, fail(3, "DISCONNECTED"))
 	}
 	return nil

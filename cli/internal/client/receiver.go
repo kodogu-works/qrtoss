@@ -149,6 +149,8 @@ func (s *receiver) onTick(now time.Time) *receiveResult {
 	if state, ok := s.state.(*receiverDraining); ok && deadlineReached(now, state.deadline) {
 		return s.finish(state, true)
 	}
+	// Only the command timeout and our own activity clock expire locally.
+	// Server ready/idle expiry is announced by room.closed; heartbeat detects loss.
 	if s.message() == nil {
 		if deadlineReached(now, s.deadline) {
 			return receiveEnd(0, fail(124, "TIMEOUT"))
@@ -157,29 +159,12 @@ func (s *receiver) onTick(now time.Time) *receiveResult {
 			s.closeRoom("idle_timeout")
 			return receiveEnd(1, fail(3, "SESSION_EXPIRED"))
 		}
-		if deadlineReached(now, s.phaseDeadline()) {
-			return receiveEnd(1, fail(3, "DISCONNECTED"))
-		}
 	}
 	if _, offline := s.state.(*receiverWritingDisconnected); !offline && now.Sub(s.lastPong) >= constants.HEARTBEAT_TIMEOUT_SECONDS*time.Second {
 		_ = s.conn.CloseNow()
 		return s.disconnect(fail(3, "DISCONNECTED"))
 	}
 	return nil
-}
-
-func (s *receiver) phaseDeadline() time.Time {
-	switch state := s.state.(type) {
-	case *receiverConfirming:
-		return state.deadline
-	case *receiverActivating:
-		return state.deadline
-	case *receiverConnected:
-		return state.idleDeadline
-	default:
-		// QR/candidate expiry is decided by the server, including pending commits.
-		return time.Time{}
-	}
 }
 
 func deadlineReached(now, deadline time.Time) bool {

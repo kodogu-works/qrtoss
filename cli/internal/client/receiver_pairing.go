@@ -75,9 +75,8 @@ func (s *receiver) onCommitted(m map[string]json.RawMessage) *receiveResult {
 		id:     committing.peer,
 		cipher: Cipher{Room: s.room, Peer: committing.peer, Keys: committing.keys},
 	}
-	confirming := &receiverConfirming{receiverPeer: peer, deadline: controlDeadline(m, "readyExpiresAt")}
-	s.state = confirming
-	if err := s.control("pair.confirm", map[string]any{"peer": peer.id, "proof": B64(committing.keys.MAC("receiver"))}, confirming.deadline); err != nil {
+	s.state = &receiverConfirming{receiverPeer: peer}
+	if err := s.control("pair.confirm", map[string]any{"peer": peer.id, "proof": B64(committing.keys.MAC("receiver"))}, time.Time{}); err != nil {
 		return receiveEnd(1, fail(3, "DISCONNECTED"))
 	}
 	// Pairing secrets are absent from all subsequent states.

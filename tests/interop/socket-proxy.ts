@@ -1,14 +1,17 @@
 import type { Server } from 'node:https';
 import WebSocket, { WebSocketServer } from 'ws';
 
-/** Delay selected receiver notifications while preserving the real relay's state machine. */
+/** Delay or adjust receiver notifications while preserving the real relay's state machine. */
 export function socketProxy(
   server: Server,
   target: string,
   origin: string,
   hooks: {
     receiverControl(type: string): void;
-    receiverMessage(message: Record<string, any>, forward: () => void): Promise<void>;
+    receiverMessage(
+      message: Record<string, any>,
+      forward: (message?: Record<string, unknown>) => void,
+    ): Promise<void>;
   },
 ) {
   const proxy = new WebSocketServer({ server, perMessageDeflate: false });
@@ -33,8 +36,9 @@ export function socketProxy(
     });
     upstream.on('message', (raw) => {
       const data = raw.toString();
-      const deliver = () => {
-        if (client.readyState === WebSocket.OPEN) client.send(data);
+      const deliver = (message?: Record<string, unknown>) => {
+        if (client.readyState === WebSocket.OPEN)
+          client.send(message ? JSON.stringify(message) : data);
       };
       incoming = incoming.then(() =>
         role === 'receiver' ? hooks.receiverMessage(JSON.parse(data), deliver) : deliver(),
