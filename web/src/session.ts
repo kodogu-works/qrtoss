@@ -143,7 +143,11 @@ export class Session {
         await this.handle(message,g);this.current(g);
       }).catch(error=>this.failed(error,g)).finally(()=>{this.queued--;this.queuedBytes-=bytes;});
     };
-    ws.onclose=()=>{ if(g===this.generation && !this.closed) {this.close();this.hooks.error('NETWORK_DISCONNECTED');} };
+    ws.onclose=()=>{void this.incoming.finally(()=>{
+      // A final control message can be delivered immediately before the close event.
+      // Let it provide the specific reason instead of overwriting it with a network error.
+      if(g===this.generation && !this.closed) {this.close();this.hooks.error('NETWORK_DISCONNECTED');}
+    });};
     ws.onerror=()=>{ if(g===this.generation && !this.closed) this.failed(new Error('NETWORK_DISCONNECTED'),g); };
   }
   private control(type:string,fields:Record<string,unknown>={}):void {
