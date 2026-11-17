@@ -20,6 +20,13 @@ The browser base path defaults to `/`; build a subpath deployment with `QRTOSS_B
 
 Run `npm run format` to format handwritten TypeScript and JavaScript with Biome. `npm run lint` performs Biome's recommended static checks and fails on warnings; `npm run check` remains a separate TypeScript type check. CI checks both lint and formatting. The scope is recorded in `biome.json`; generated protocol constants are excluded and remain verified by `check:generated`. Existing non-null assertions at DOM/protocol boundaries and explicit `any` in wire/test helpers are permitted; new code should prefer precise types. Keep mechanical formatting separate from behavior changes in commits.
 
+For Go, CI requires `gofmt -l .` to report no files and runs Staticcheck on all packages, including tests. Use `gofmt -w .` in `cli/` to apply formatting. Install and run the same pinned Staticcheck version as CI from `cli/`:
+
+```sh
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+staticcheck ./...
+```
+
 `web/src/main.ts` removes the pairing fragment immediately and chooses the page. Keep sender camera/delivery state in `sender.ts`, receiver QR/receipt/navigation state in `receiver.ts`, and shared markup/rendering in `view.ts`. Page state belongs to each initializer, rather than shared module globals.
 
 Keep protocol constants, control-message schemas, and fixtures in `protocol/`; do not edit generated files. Edit `protocol/control-messages.json` for control wire shapes, field types/ranges, and target endpoints, then run `npm run gen:protocol` and `npm run check:generated`. Error-code and close-reason enums reference their existing JSON definitions. The TypeScript control validator is shared by relay and Web; Go uses generated validation tables. Keep authorization, peer binding, and session state checks in the respective session implementations. Update the independent examples in `protocol/vectors/control.json` and run both TypeScript and Go tests whenever the schema changes. Use only synthetic data in fixtures and failure artifacts. Keep ja/en/es UI and CLI dictionaries synchronized. Pin direct dependency versions, update lockfiles, check licenses and vulnerabilities, and update third-party notices when dependencies change.

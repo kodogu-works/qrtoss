@@ -151,6 +151,9 @@ func TestCryptoVectors(t *testing.T) {
 		t.Fatal("replay accepted")
 	}
 	env, e = Seal(k.S2R, f.Room, f.Peer, "s2r", 1, []byte(`{"type":"activity","type":"activity"}`))
+	if e != nil {
+		t.Fatal(e)
+	}
 	raw, _ = json.Marshal(env)
 	if _, e = c.Decrypt(raw); e == nil {
 		t.Fatal("duplicate inner key accepted")
@@ -159,11 +162,17 @@ func TestCryptoVectors(t *testing.T) {
 		t.Fatal("invalid payload consumed sequence")
 	}
 	env, e = Seal(k.S2R, f.Room, f.Peer, "s2r", 1, []byte(`{"type":"ready_ack"}`))
+	if e != nil {
+		t.Fatal(e)
+	}
 	raw, _ = json.Marshal(env)
 	if _, e = c.Decrypt(raw); e == nil {
 		t.Fatal("wrong direction message accepted")
 	}
 	env, e = Seal(k.S2R, f.Room, f.Peer, "s2r", 1, []byte(`{"type":"activity"}`))
+	if e != nil {
+		t.Fatal(e)
+	}
 	env.CT = "A" + env.CT[1:]
 	raw, _ = json.Marshal(env)
 	if _, e = c.Decrypt(raw); e == nil {

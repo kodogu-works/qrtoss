@@ -1935,6 +1935,8 @@ TypeScriptの`packages/protocol`はGoから参照できないため、言語非�
 | `npm start` | 本番relayと静的assetを起動 |
 | `docker compose up -d --build` | `.env`設定済み環境で自己ホストを起動 |
 | `go test -race ./...`（`cli/`） | CLIの単体・状態機械・出力・暗号ベクトル試験 |
+| `gofmt -l .`（`cli/`） | Goの整形検査。出力があればCIを失敗させる |
+| `staticcheck ./...`（`cli/`） | Goのlint。CIと同じ固定版を使い、指摘があれば失敗させる |
 | `go vet ./...`、`govulncheck ./...`（`cli/`） | 静的検査、既知脆弱性の確認 |
 | リリーススクリプト | CLIのクロスビルド、SHA-256、署名、`run.sh`の生成 |
 
@@ -2143,7 +2145,7 @@ fixtureの電話番号・メール・パス等は試験用であり、試験中�
 
 ### 18.6 CIと公開前の合格条件
 
-- 型検査、lint、全必須の単体・統合・E2E・相互運用試験、Web・CLIの辞書検証、`go vet`・`go test -race`、本番build、共通定義の生成差分なしが成功している。
+- 型検査、lint、全必須の単体・統合・E2E・相互運用試験、Web・CLIの辞書検証、`gofmt`・`staticcheck`・`go vet`・`go test -race`、本番build、共通定義の生成差分なしが成功している。
 - 依存バージョン、Go module、イメージdigest、ライセンス、公開するソースcommitが確定している。`npm audit`等と`govulncheck`で既知脆弱性を確認している。
 - 本番CSPを有効にした状態で、QR生成・カメラ・Worker経路を含む読取・WSSが動く。
 - ダミー転送内容を使った非保存検査と、外部実行コードへの通信検査（Web・CLI）が成功している。

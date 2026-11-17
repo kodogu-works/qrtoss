@@ -18,11 +18,11 @@
 
 上記対象コミットでは、初回レビューの指摘は1件を除いて適切に対応されていた。仕様違反だった3.1（期限競合）と、公開前に必要だった3.2（IPv6のレート制限）は、仕様の更新と回帰試験を含めて解消した。修正内容に新たなセキュリティ上の問題は見つからなかった。
 
-以下の対応状況には、CLI状態型とready期限・idle期限の修正を追記した。
+以下の対応状況には、CLI状態型・ready期限とidle期限・GoのCI検査の修正を追記した。
 
 1. **対応済み**：CLIの`receive()`を段階ごとの明示的な状態型へ再構成し、接続準備・ペアリング・メッセージ処理・出力完了処理を分割した（初回2.2、優先順位4）。
-2. **対応済み（今回）**：CLIもready期限・idle期限の失効をサーバーの通知で確定するようにし、通知遅延による誤切断を解消した。無操作による終了では`SESSION_EXPIRED`を表示する（3.1節）。
-3. **新規・低**：Goのコードには整形・lintのCI検査がない（3.2節）。
+2. **対応済み**：CLIもready期限・idle期限の失効をサーバーの通知で確定するようにし、通知遅延による誤切断を解消した。無操作による終了では`SESSION_EXPIRED`を表示する（3.1節）。
+3. **対応済み（今回）**：Goの整形検査と版を固定したStaticcheckをCIに追加した。導入時に見つかった暗号テストの未確認エラー3件も修正した（3.2節）。
 
 ## 2. 前回指摘の確認結果
 
@@ -36,7 +36,7 @@
 | 3.3 候補senderへのerrorの重複 | 解消 | `fail()`は`closeCandidate(..., notifySender=false)`を呼ぶ。試験`candidate failure sends exactly one error`がある |
 | 3.3 恒久拒否後の終了コード | 解消 | `violation()`は拒否の確定後にコード6を維持する。仕様14.9.1・14.12に追記され、試験もある |
 | 3.3 受信ページの読み取り中表示 | 解消 | `peer_scanning`を表示し、仕様5.3にも記載された。E2E試験がある |
-| 2.2 フォーマッター・リンター | 解消（TS・JS） | Biomeによるlintと整形の検査をCIで行い、生成コードは対象外とした。Goは対象外のまま（3.2節） |
+| 2.2 フォーマッター・リンター | 解消 | TS・JSはBiomeによるlintと整形の検査をCIで行い、生成コードは対象外とした。Goは`gofmt -l .`と版を固定した`staticcheck ./...`をCIで検査する（3.2節） |
 | 2.2 `main.ts`の分割 | 解消 | `main.ts`（13行）はページの選択だけを行う。処理は`receiver.ts`・`sender.ts`・`view.ts`に分かれ、モジュールレベルの共有状態はなくなった |
 | 2.2 CLI `receive()`の状態型 | **解消** | [`receive()`](../cli/internal/client/session.go#L140)を15行の接続準備と実行の呼び出しに縮小した。[`receiverState`](../cli/internal/client/receiver_state.go)の段階別の型で、ペアリング・接続・出力中・切断後の出力待ち・ACK待ちを表現する。7つの状態boolを廃止し、受信ID・ダイジェスト・出力完了チャネル・終了期限を必要な状態だけに保持する。イベント処理は[`receiver.go`](../cli/internal/client/receiver.go)、[`receiver_pairing.go`](../cli/internal/client/receiver_pairing.go)、[`receiver_messages.go`](../cli/internal/client/receiver_messages.go)へ分割した |
 | 2.2 検証ロジックの重複 | 解消 | `protocol/control-messages.json`から、TSの型・検証定義とGoの検証定義を生成する。サーバーとWebは`packages/protocol`の検証を共用する。共通ベクトルを両言語で検証し、CIで生成物の差分も検査する |
@@ -56,11 +56,14 @@ CLIには、ローカルのready期限・idle期限だけで切断し、期限�
 
 仕様4.4・11.3にも、サーバーの期限判定と通知遅延の扱いを明記した。[`receiver_test.go`](../cli/internal/client/receiver_test.go#L206)と実Go CLIの相互運用試験（[`cli.test.ts:482`](../tests/interop/cli.test.ts#L482)、`:501`）で、通知遅延中の通信継続・終了理由・QR更新・ローカルの終了条件を検証した。
 
-### 3.2 [低] Goのコードに整形・lintの検査がない
+### 3.2 [解消] Goの整形・lintのCI検査
 
-TS・JSはBiomeで検査するようになった。一方、CIでGoに対して実行するのは`go vet`と`govulncheck`だけで、`gofmt -l`による整形の確認や静的解析（`staticcheck`等）を行わない。今回の状態型への再構成では長い条件式も分割して整形したが、Goの整形・lintのCI検査は未対応である。
+Goの整形・lintをCIで検査していなかったため、[`.github/workflows/ci.yml`](../.github/workflows/ci.yml#L24)に次の2ステップを追加した。どちらもGoのセットアップ直後、Node・ブラウザの試験より前に`cli/`で実行し、失敗すればCIを停止する。
 
-**修正提案**：CIに`test -z "$(gofmt -l .)"`と`staticcheck ./...`（または`golangci-lint`）を追加する。
+- `Check Go formatting`：`gofmt -l .`がファイルを報告したら、対象ファイル名を表示して失敗する。Goの構文エラーでも失敗する。
+- `Lint Go`：`go install honnef.co/go/tools/cmd/staticcheck@v0.8.2`で版を固定して導入し、`staticcheck ./...`でテストを含む全パッケージを解析する。利用版は[Staticcheck 2026.2.2（v0.8.2）](https://github.com/dominikh/go-tools/releases/tag/2026.2.2)である。
+
+導入時にStaticcheckが検出した`SA4006`は、[`client_test.go`](../cli/internal/client/client_test.go#L153)で`Seal()`のエラーを次の復号結果で上書きしていた3件だった。各箇所で暗号化のエラーを確認するように修正した。[`CONTRIBUTING.md`](../CONTRIBUTING.md)に同じ固定版での実行手順を追加し、仕様17.3・18.6と[`docs/validation.md`](validation.md)の検査項目も更新した。
 
 ### 3.3 [情報] 終了時の`room.close`の二重送信
 
@@ -72,6 +75,7 @@ TS・JSはBiomeで検査するようになった。一方、CIでGoに対して�
 - 3.1節の回帰試験を追加した。中継の通知遅延（[`socket-proxy.ts`](../tests/interop/socket-proxy.ts)）でCLIへの残り期間を短縮し、`pair.active`・`room.touched`をその期限後まで遅らせる。ACTIVE成立後にサーバーのready期限を越えても通信できることと、サーバーのidle失効通知で`SESSION_EXPIRED`とQR更新へ進むことも検証する。修正前は追加したGo試験と相互運用試験で早期切断を再現し、修正後は成功した。
 - 上記対象コミットのレビューではGoの試験・相互運用試験・E2Eを実行していない。今回の2.2対応では、`go test -race ./...`・`go vet ./...`と実Go CLIの相互運用試験9件が成功した。追加した[`receiver_test.go`](../cli/internal/client/receiver_test.go)は、ハンドシェイクの順序、出力中の切断・書き込み失敗、重複受信、ACK待ちの期限と終了コードを検証する。
 - 今回の3.1対応では、`go test -race -count=1 ./...`・`go vet ./...`、実Go CLIの相互運用試験12件、`tsc --noEmit`、変更したTSファイルのBiome lint・format検査がすべて成功した。
+- 今回の3.2対応では、Go 1.26.2とStaticcheck v0.8.2で、追加したCIステップ・`go test -race -count=1 ./...`・`go vet ./...`がすべて成功した。ワークフローYAMLの読み込みと追加ステップのシェル構文も確認した。一時的なGoモジュールで、整形済み・lint指摘なしのコードは成功し、未整形・構文エラー・未使用コードではそれぞれ検査が失敗することを確認した。
 - [`docs/validation.md`](validation.md)のとおり、実機（iOS SafariのWorker経路を含む）、実HTTPS配備、WebKitでのE2Eは引き続き公開前の必須項目である。
 
 ## 5. 対応の優先順位
@@ -79,6 +83,6 @@ TS・JSはBiomeで検査するようになった。一方、CIでGoに対して�
 | 順位 | 項目 | 理由 |
 | ---: | --- | --- |
 | 1 | 2.2 CLI `receive()`の明示的な状態型への再構成（対応済み） | 段階ごとの状態型により、不正な状態の組合せを排除した |
-| 2 | 3.1 ready期限・idle期限のローカル切断の見直し（今回対応済み） | 通知遅延による誤切断を防ぎ、終了理由をWebの方針と仕様に合わせた |
-| 3 | 3.2 Goの整形・lintのCI検査 | 外部レビューのコスト削減 |
+| 2 | 3.1 ready期限・idle期限のローカル切断の見直し（対応済み） | 通知遅延による誤切断を防ぎ、終了理由をWebの方針と仕様に合わせた |
+| 3 | 3.2 Goの整形・lintのCI検査（今回対応済み） | 整形と静的解析の指摘をCIで検出し、外部レビューのコストを削減する |
 | 4 | 3.3 `room.close`の二重送信 | 動作上の影響はほぼない |

@@ -21,6 +21,19 @@ jobs:
         with:
           go-version: 1.27.4
           cache-dependency-path: cli/go.sum
+      - name: Check Go formatting
+        run: |
+          gofmt_files=$(gofmt -l .)
+          if [ -n "$gofmt_files" ]; then
+            printf 'Go files require gofmt:\n%s\n' "$gofmt_files"
+            exit 1
+          fi
+        working-directory: cli
+      - name: Lint Go
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          staticcheck ./...
+        working-directory: cli
       - run: npm ci
       - run: npm run check:generated
       - run: npm run check

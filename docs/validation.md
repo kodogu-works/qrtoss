@@ -7,7 +7,8 @@ The implementation includes automated tests and a CI workflow. Automated desktop
 | Area | Check |
 | --- | --- |
 | Shared definitions | `npm run check:generated`; TS/Go output generated from `protocol/` |
-| Type/static checks | `npm run typecheck`, `npm run lint`, `go vet ./...` in `cli/` |
+| Type/static checks | `npm run typecheck`, `npm run lint`, `go vet ./...` and pinned `staticcheck ./...` in `cli/` |
+| Formatting | `npm run format:check`; `gofmt -l .` in `cli/` must report no files |
 | Crypto | Appendix A proof/ciphertext fixtures, tampering, canonical encodings, sequence replay, Unicode limits |
 | Relay | Real HTTP/WS authentication, capabilities, candidate/commit/ready lifecycle, roles, expiry, rate/capacity/size bounds, shutdown and static security headers |
 | Web | Content classification, language keys/error messages, control schemas, base-path validation and URL generation, camera QR input, confirmation before send, display-only and same-tab auto-open flows |
@@ -38,6 +39,10 @@ WebKit could not launch because required host shared libraries were unavailable,
 All 49 Node unit/integration/interoperability tests passed, including actual Go receiver tests for delayed commit notifications crossing the QR deadline and late proofs followed by server-driven QR renewal. Relay tests inject a monotonic clock to check ready exchange across the pairing deadline. IP tests cover IPv6 /64 and configurable /56 aggregation, non-byte-aligned prefixes, IPv4-mapped spellings, proxy trust, shared authentication/socket limits and LRU eviction at 4,096 entries. TypeScript, generated-definition and i18n checks, the production build, Go race tests and Go vet also passed.
 
 All 28 Chromium and Firefox E2E cases passed across the root and `/qrtoss/` deployments, including the four commit-boundary cases rerun after correcting the test clock setup. The new browser tests hold commit/proof notifications and advance client/server clocks to exercise QR and candidate deadline boundaries. WebKit still cannot launch because host shared libraries are missing; its 14 E2E cases remain unverified. Real-phone and deployed HTTPS checks remain required.
+
+## Go formatting and lint CI verification
+
+CI checks Go formatting and runs Staticcheck v0.8.2 before Node and browser tests. With Go 1.26.2 locally, both added CI scripts, `go test -race -count=1 ./...` and `go vet ./...` passed. The workflow YAML and added shell scripts also passed syntax checks. Isolated fixtures confirmed that formatted, lint-clean Go passes, while unformatted files, parse errors and unused code fail the corresponding checks. Three unchecked `Seal()` errors in the crypto tests were fixed after Staticcheck reported them.
 
 ## Required manual release evidence
 
