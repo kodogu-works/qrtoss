@@ -17,6 +17,7 @@ try {
     maxSockets: positive('MAX_SOCKETS', 2200),
     maxUnauthenticatedSockets: positive('MAX_UNAUTHENTICATED_SOCKETS', 100),
     maxSocketsPerIp: positive('MAX_SOCKETS_PER_IP', 60),
+    ipv6PrefixLength: positive('IPV6_PREFIX_LENGTH', 64),
     trustProxyCidrs: process.env.TRUST_PROXY_CIDRS?.split(',').map(x => x.trim()).filter(Boolean),
   });
   await relay.listen(positive('PORT', 8080), process.env.HOST ?? '0.0.0.0');

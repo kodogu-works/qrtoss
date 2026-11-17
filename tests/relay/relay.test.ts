@@ -324,6 +324,24 @@ test('commit consumes join capability and ready deadline cannot be extended by h
   assert.equal((await sender.next('room.closed')).code, 'READY_TIMEOUT');
 });
 
+test('commit before the QR deadline permits ready exchange after the deadline', async t => {
+  let clock = 0;
+  const { relay, url, create } = await setup({ publicOrigin: ORIGIN, now: () => clock });
+  t.after(() => relay.close());
+  const room = await (await create()).json() as Message;
+  clock = 299999;
+  const { receiver, sender, peer, cipher } = await pair(url, room, false);
+  clock = 300001;
+  relay.sweep();
+  cipher(sender, 's2r', '0'); await receiver.next('cipher');
+  cipher(receiver, 'r2s', '0'); await sender.next('cipher');
+  receiver.send('pair.active', { peer });
+  await receiver.next('pair.active'); await sender.next('pair.active');
+  cipher(sender, 's2r', '1');
+  assert.equal((await receiver.next('cipher')).seq, '1');
+  assert.equal(relay.stats().rooms, 1);
+});
+
 test('ACTIVE is forbidden before both sequence-zero envelopes are relayed', async t => {
   const { relay, url, create } = await setup();
   t.after(() => relay.close());

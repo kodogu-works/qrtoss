@@ -7,6 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { WebSocketServer, WebSocket } from 'ws';
 import C from '../../protocol/constants.json' with { type: 'json' };
 import closeReasons from '../../protocol/close-reasons.json' with { type: 'json' };
+import { ipLimitKey, normalizeIp } from './ip.ts';
 
 type Json = Record<string, unknown>;
 type State = 'CREATED' | 'WAITING' | 'CANDIDATE' | 'COMMITTED' | 'ACTIVE' | 'CLOSED';
@@ -33,6 +34,7 @@ export interface RelayOptions {
   maxSockets?: number;
   maxUnauthenticatedSockets?: number;
   maxSocketsPerIp?: number;
+  ipv6PrefixLength?: number;
   trustProxyCidrs?: string[];
 }
 const random = (n: number) => randomBytes(n).toString('base64url');
@@ -81,6 +83,8 @@ export function createRelay(options: RelayOptions) {
   const maxSockets = options.maxSockets ?? 2200;
   const maxUnauthenticated = options.maxUnauthenticatedSockets ?? 100;
   const maxPerIp = options.maxSocketsPerIp ?? 60;
+  const ipv6PrefixLength = options.ipv6PrefixLength ?? 64;
+  if (!Number.isInteger(ipv6PrefixLength) || ipv6PrefixLength < 1 || ipv6PrefixLength > 128) throw new Error('IPV6_PREFIX_LENGTH_INVALID');
   for (const limit of [maxRooms, maxSockets, maxUnauthenticated, maxPerIp]) {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('LIMIT_INVALID');
   }
@@ -89,17 +93,17 @@ export function createRelay(options: RelayOptions) {
   }); });
   const wss = new WebSocketServer({ noServer: true, maxPayload: C.MAX_WS_MESSAGE_BYTES, perMessageDeflate: false });
   function ipOf(req: IncomingMessage) {
-    let ip = req.socket.remoteAddress ?? 'unknown';
-    const normalized = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-    if (trusted.check(normalized, normalized.includes(':') ? 'ipv6' : 'ipv4')) {
+    let ip = normalizeIp(req.socket.remoteAddress ?? '') ?? 'unknown';
+    if (ip !== 'unknown' && trusted.check(ip, ip.includes(':') ? 'ipv6' : 'ipv4')) {
       const forwarded = req.headers['x-forwarded-for'];
       if (typeof forwarded === 'string') {
         // The trusted edge must overwrite this header. Use its immediate client.
         const candidate = forwarded.split(',').at(-1)?.trim();
-        if (candidate && /^[a-fA-F0-9:.]+$/.test(candidate)) ip = candidate;
+        const normalized = candidate && normalizeIp(candidate);
+        if (normalized) ip = normalized;
       }
     }
-    return ip;
+    return ipLimitKey(ip, ipv6PrefixLength);
   }
   function ipRecord(ip: string) {
     let entry = ips.get(ip);
@@ -107,9 +111,11 @@ export function createRelay(options: RelayOptions) {
       if (ips.size >= 4096) ips.delete(ips.keys().next().value!);
       const t = now();
       entry = { at: t, create: bucket(t, 5), failures: bucket(t, 20) };
-      ips.set(ip, entry);
     }
     entry.at = now();
+    // Map iteration is insertion-ordered: refresh on access for bounded LRU eviction.
+    ips.delete(ip);
+    ips.set(ip, entry);
     return entry;
   }
   function headers(res: ServerResponse) {

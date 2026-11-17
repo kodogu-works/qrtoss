@@ -269,7 +269,7 @@ addEventListener('pageshow',event=>{if(event.persisted) {phase='disconnected';st
 setInterval(()=>{
   if(!sender && expiry) {
     el('expiry').textContent=translate(language,'expires',{seconds:Math.max(0,Math.ceil((expiry-performance.now())/1000))});
-    if(performance.now()>=expiry && ['waiting','pairing'].includes(phase)) {expiry=0;session?.close();showError('PAIR_EXPIRED');}
+    // The server's atomic commit decides expiry, including while commit/ready is in flight.
   }
 },500);
 el('version').textContent=`${__APP_VERSION__} (${__SOURCE_COMMIT__})`;

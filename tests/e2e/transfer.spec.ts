@@ -7,10 +7,10 @@ import {createServer,request} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import type {Socket} from 'node:net';
-import {createRelay} from '../../server/src/index.ts';
+import {createRelay,type RelayOptions} from '../../server/src/index.ts';
 
 /** Match the production proxy contract: strip the mount from HTTP and WS paths. */
-async function deployment(basePath:string,staticDir:string){
+async function deployment(basePath:string,staticDir:string,options:Pick<RelayOptions,'now'|'wallNow'>={}){
   let target='';
   const sockets=new Set<Socket>();
   const proxy=createServer((req,res)=>{
@@ -41,9 +41,9 @@ async function deployment(basePath:string,staticDir:string){
   await new Promise<void>(resolve=>proxy.listen(0,'127.0.0.1',resolve));
   const address=proxy.address();if(!address||typeof address==='string')throw new Error('LISTEN_FAILED');
   const origin=`http://127.0.0.1:${address.port}`;
-  const relay=createRelay({publicOrigin:origin,allowHttpLoopback:true,staticDir});
+  const relay=createRelay({publicOrigin:origin,allowHttpLoopback:true,staticDir,...options});
   target=await relay.listen();
-  return {base:origin+basePath,origin,async close(){
+  return {base:origin+basePath,origin,relay,async close(){
     for(const socket of sockets)socket.destroy();
     await Promise.all([relay.close(),new Promise<void>(resolve=>proxy.close(()=>resolve()))]);
   }};
@@ -159,5 +159,88 @@ test('inert content stays literal, language switches and mobile layout fits',asy
 test('invalid pairing fragment is removed and no connection is attempted',async({page})=>{
   let sockets=0;page.on('websocket',()=>sockets++);await page.goto(base+'send#v=1&r=secret&j=x&k=x');
   await expect(page).toHaveURL(base+'send');await expect(page.locator('#error')).toBeVisible();expect(sockets).toBe(0);
+});
+
+test('QR countdown reaching zero cannot interrupt an in-flight commit and ready exchange',async({browser})=>{
+  let clock=0;
+  const fixture=await deployment(basePath,directory,{now:()=>clock,wallNow:()=>1700000000000+clock});
+  const rc=await browser.newContext({locale:'en-US'}),sc=await browser.newContext({locale:'en-US'});
+  const r=await rc.newPage(),s=await sc.newPage();
+  const committed=Promise.withResolvers<()=>void>();
+  const controls:string[]=[];
+  try{
+    await r.addInitScript(()=>Object.defineProperty(performance,'now',{configurable:true,value:()=>0}));
+    await r.route('**/api/v1/rooms',async route=>{
+      const response=await route.fetch();
+      // Create the room at zero, then authenticate just before its deadline.
+      clock=299000;
+      await route.fulfill({response});
+    });
+    await r.routeWebSocket('**/ws',ws=>{
+      const server=ws.connectToServer();
+      ws.onMessage(message=>{controls.push(JSON.parse(message.toString()).type);server.send(message);});
+      server.onMessage(message=>{
+        if(JSON.parse(message.toString()).type==='pair.committed')committed.resolve(()=>ws.send(message));
+        else ws.send(message);
+      });
+    });
+    await r.goto(fixture.base);
+    const url=await pairingURL(r);
+    await s.goto(url);
+    const release=await committed.promise;
+    clock=300001;fixture.relay.sweep();
+    await r.evaluate(()=>{
+      Object.defineProperty(performance,'now',{configurable:true,value:()=>1001});
+    });
+    // The UI timer has run past the advertised deadline while pair.committed is delayed.
+    await expect(r.locator('#expiry')).toHaveText('Expires in 0s');
+    await expect(r.locator('#error')).toBeHidden();
+    expect(controls).not.toContain('room.close');
+    release();
+    await expect(r.locator('#status')).toHaveText('Connected securely');
+    await expect(s.locator('#status')).toHaveText('Connected securely');
+    expect(fixture.relay.stats().rooms).toBe(1);
+  }finally{await rc.close();await sc.close();await fixture.close();}
+});
+
+for(const expired of ['candidate','QR'] as const)test(`proof arriving after the local ${expired} deadline waits for the server's expiry decision`,async({browser})=>{
+  let clock=0;
+  const fixture=await deployment(basePath,directory,{now:()=>clock,wallNow:()=>1700000000000+clock});
+  const rc=await browser.newContext({locale:'en-US'}),sc=await browser.newContext({locale:'en-US'});
+  const r=await rc.newPage(),s=await sc.newPage();
+  const proof=Promise.withResolvers<()=>void>();
+  const controls:string[]=[];
+  try{
+    await r.addInitScript(()=>Object.defineProperty(performance,'now',{configurable:true,value:()=>0}));
+    await r.routeWebSocket('**/ws',ws=>{
+      const server=ws.connectToServer();
+      ws.onMessage(message=>{controls.push(JSON.parse(message.toString()).type);server.send(message);});
+      server.onMessage(message=>{
+        if(JSON.parse(message.toString()).type==='pair.proof')proof.resolve(()=>ws.send(message));
+        else ws.send(message);
+      });
+    });
+    await r.goto(fixture.base);
+    const url=await pairingURL(r);
+    await s.goto(url);
+    const release=await proof.promise;
+    clock=expired==='candidate'?10001:300001;
+    await r.evaluate(offset=>{
+      Object.defineProperty(performance,'now',{configurable:true,value:()=>offset});
+    },clock);
+    release();
+    // The server notification follows the delayed proof on the same ordered stream.
+    fixture.relay.sweep();
+    if(expired==='candidate'){
+      await expect(r.locator('#status')).toHaveText('Waiting for your phone');
+      await expect(r.locator('#error')).toBeHidden();
+      expect(fixture.relay.stats().rooms).toBe(1);
+    }else{
+      await expect(r.locator('#error')).toHaveText('The connection QR code expired.');
+      expect(fixture.relay.stats().rooms).toBe(0);
+    }
+    expect(controls).not.toContain('pair.commit');
+    expect(controls).not.toContain('pair.reject');
+  }finally{await rc.close();await sc.close();await fixture.close();}
 });
 });

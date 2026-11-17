@@ -439,7 +439,8 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 			if acceptedID == "" && !deadline.IsZero() && !now.Before(deadline) {
 				return 0, fail(124, "TIMEOUT")
 			}
-			if acceptedID == "" && (!committed && !now.Before(pairDeadline) || committed && !active && !readyDeadline.IsZero() && !now.Before(readyDeadline) || active && !idleDeadline.IsZero() && !now.Before(idleDeadline)) {
+			// QR expiry is decided by the server, even before pair.committed arrives.
+			if acceptedID == "" && (committed && !active && !readyDeadline.IsZero() && !now.Before(readyDeadline) || active && !idleDeadline.IsZero() && !now.Before(idleDeadline)) {
 				return 1, fail(3, "DISCONNECTED")
 			}
 			if !disconnected && now.Sub(lastPong) >= constants.HEARTBEAT_TIMEOUT_SECONDS*time.Second {
@@ -514,17 +515,26 @@ func (r *Runner) receive(ctx context.Context, o Options, t *terminal, h *http.Cl
 					return 1, fail(3, "DISCONNECTED")
 				}
 			case "pair.proof":
-				if committed || peer == "" || str(m, "peer") != peer || !time.Now().Before(candidateDeadline) || !time.Now().Before(pairDeadline) {
+				if committed || peer == "" || str(m, "peer") != peer {
 					return violation()
+				}
+				if !time.Now().Before(candidateDeadline) || !time.Now().Before(pairDeadline) {
+					continue
 				}
 				keys, e = Derive(psk, room.Room, peer, rnonce, str(m, "sNonce"))
 				proof, pe := Decode(str(m, "proof"), 32)
-				if e != nil || pe != nil || !hmac.Equal(keys.MAC("sender"), proof) {
+				valid := e == nil && pe == nil && hmac.Equal(keys.MAC("sender"), proof)
+				// Check once more after proof verification; never bind an in-flight commit
+				// to a local QR/candidate deadline that may race with the server.
+				if !time.Now().Before(candidateDeadline) || !time.Now().Before(pairDeadline) {
+					continue
+				}
+				if !valid {
 					_ = ctl("pair.reject", map[string]any{"peer": peer, "code": "AUTH_FAILED"}, time.Time{})
 					keys = Keys{}
 					continue
 				}
-				if e = ctl("pair.commit", map[string]any{"peer": peer}, candidateDeadline); e != nil {
+				if e = ctl("pair.commit", map[string]any{"peer": peer}, time.Time{}); e != nil {
 					return 1, fail(3, "DISCONNECTED")
 				}
 			case "pair.candidate_closed":

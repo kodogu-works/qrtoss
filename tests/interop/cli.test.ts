@@ -12,6 +12,7 @@ import WebSocket from 'ws';
 import { createRelay } from '../../server/src/index.ts';
 import { CipherChannel, deriveKeys, encodeText, makeProof, randomToken, verifyProof } from '../../packages/protocol/src/index.ts';
 import { Peer } from './peer.ts';
+import { socketProxy } from './socket-proxy.ts';
 
 const exec = promisify(execFile);
 const cliDirectory = resolve('cli');
@@ -64,15 +65,40 @@ after(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true });
 });
 
-async function start(format: 'text' | 'jsonl', delay = 0) {
+async function start(format: 'text' | 'jsonl', delay = 0, scenario?: 'commit' | 'lateProof') {
   const secure = createServer({ key, cert: certificate });
   await new Promise<void>(resolve => secure.listen(0, '127.0.0.1', resolve));
   const address = secure.address();
   assert.ok(address && typeof address !== 'string');
   const origin = `https://127.0.0.1:${address.port}`;
-  const relay = createRelay({ publicOrigin: origin });
-  secure.on('request', (req, res) => relay.server.emit('request', req, res));
-  secure.on('upgrade', (req, socket, head) => relay.server.emit('upgrade', req, socket, head));
+  let clock = 0, firstRoom = true, serverExpired = false, prematureClose = false;
+  const delayedProof = Promise.withResolvers<void>();
+  const relay = createRelay({ publicOrigin: origin, ...(scenario ? { now: () => clock, wallNow: () => 1700000000000 + clock } : {}) });
+  secure.on('request', (req, res) => {
+    if (scenario && firstRoom && req.method === 'POST' && req.url === '/api/v1/rooms') {
+      firstRoom = false;
+      // Advance after room creation and before either WebSocket is accepted, so the
+      // fake jump cannot accidentally trigger the unauthenticated-socket timeout.
+      res.once('finish', () => { clock = 299500; });
+    }
+    relay.server.emit('request', req, res);
+  });
+  const proxy = scenario ? socketProxy(secure, await relay.listen(), origin, {
+    receiverControl(type) { if (type === 'room.close' && !serverExpired) prematureClose = true; },
+    async receiverMessage(message, forward) {
+      if (scenario === 'commit' && message.type === 'pair.committed') {
+        clock = 300001; relay.sweep();
+        await new Promise(resolve => setTimeout(resolve, 750));
+      }
+      if (scenario === 'lateProof' && message.type === 'pair.proof' && !serverExpired) {
+        // The server forwarded this proof before expiry, but it arrives after both local deadlines.
+        await new Promise(resolve => setTimeout(resolve, 750));
+        forward(); delayedProof.resolve(); return;
+      }
+      forward();
+    },
+  }) : undefined;
+  if (!proxy) secure.on('upgrade', (req, socket, head) => relay.server.emit('upgrade', req, socket, head));
   const child = spawn(binary, ['--server', origin, '--qr', 'off', '--pairing-url', '--lang', 'en', '--timeout', '15', '--format', format], {
     env: { ...process.env, QRTOSS_TEST_CA: join(fixture, 'cert.pem'), QRTOSS_TEST_OUTPUT_DELAY_MS: String(delay) }, stdio: 'pipe',
   });
@@ -85,16 +111,33 @@ async function start(format: 'text' | 'jsonl', delay = 0) {
   });
   let sender: Peer | undefined;
   try {
-    const pairing = await pairingUrl(child);
-    const fragment = new URLSearchParams(new URL(pairing).hash.slice(1));
-    const room = fragment.get('r')!, cap = fragment.get('j')!, psk = fragment.get('k')!;
-    const ws = new WebSocket(origin.replace('https:', 'wss:') + '/ws', 'qrtoss.v1', { origin, ca: certificate });
-    sender = new Peer(ws); await once(ws, 'open');
-    sender.send({ type: 'auth', role: 'sender', room, cap });
-    const { peer } = await sender.next('auth.ok');
-    const { rNonce } = await sender.next('pair.challenge');
-    const sNonce = randomToken(32), keys = await deriveKeys(psk, room, peer, rNonce, sNonce);
-    sender.send({ type: 'pair.proof', peer, sNonce, proof: await makeProof(keys, 'sender') });
+    async function prove(pairing: string) {
+      const fragment = new URLSearchParams(new URL(pairing).hash.slice(1));
+      const room = fragment.get('r')!, cap = fragment.get('j')!, psk = fragment.get('k')!;
+      const ws = new WebSocket(origin.replace('https:', 'wss:') + '/ws', 'qrtoss.v1', { origin, ca: certificate });
+      sender = new Peer(ws); await once(ws, 'open');
+      sender.send({ type: 'auth', role: 'sender', room, cap });
+      const { peer } = await sender.next('auth.ok');
+      const { rNonce } = await sender.next('pair.challenge');
+      const sNonce = randomToken(32), keys = await deriveKeys(psk, room, peer, rNonce, sNonce);
+      sender.send({ type: 'pair.proof', peer, sNonce, proof: await makeProof(keys, 'sender') });
+      return { room, peer, keys };
+    }
+    let proof = await prove(await pairingUrl(child));
+    if (scenario === 'lateProof') {
+      await delayedProof.promise;
+      // Let the serialized receiver loop process the stale proof before the server expires the room.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(prematureClose, false);
+      assert.equal(child.exitCode, null);
+      assert.doesNotMatch(diagnostics, /PROTOCOL_ERROR|QR_REFRESHED/);
+      const renewed = pairingUrl(child);
+      serverExpired = true; clock = 300001; relay.sweep();
+      sender!.close();
+      proof = await prove(await renewed);
+    }
+    const { room, peer, keys } = proof;
+    assert.ok(sender);
     await sender.next('pair.committed');
     const confirmation = await sender.next('pair.confirm');
     assert.equal(await verifyProof(keys, 'receiver', confirmation.proof), true);
@@ -103,6 +146,10 @@ async function start(format: 'text' | 'jsonl', delay = 0) {
     assert.deepEqual(await sender.receive(), { type: 'ready_ack' });
     await sender.next('pair.active');
     assert.deepEqual(await sender.receive(), { type: 'mode', value: 'stdout' });
+    if (scenario === 'commit') {
+      assert.equal(prematureClose, false);
+      assert.doesNotMatch(diagnostics, /QR_REFRESHED|PROTOCOL_ERROR/);
+    }
     return {
       sender, child, exited, output: () => output, diagnostics: () => diagnostics,
       async close() {
@@ -206,3 +253,19 @@ test('TS sender → real Go receiver: missing ack_seen preserves successful stdo
     assert.match(session.diagnostics(), /\[ACK_UNCONFIRMED\]/);
   } finally { await session.close(); }
 });
+
+for (const scenario of ['commit', 'lateProof'] as const) {
+  test(`real Go receiver: ${scenario === 'commit' ? 'commit notification and ready cross the QR deadline' : 'late proof is ignored until server expiry and QR renewal'}`, { timeout: 30000 }, async () => {
+    const session = await start('text', 0, scenario);
+    try {
+      const id = randomToken(16);
+      await session.sender.app({ type: 'data', id, textB64: encodeText('deadline boundary') });
+      assert.deepEqual(await session.sender.receive(), { type: 'ack', id, status: 'received' });
+      await session.sender.app({ type: 'ack_seen', id });
+      assert.equal(await session.exited, 0);
+      assert.equal(session.output(), 'deadline boundary\n');
+      assert.doesNotMatch(session.diagnostics(), /PROTOCOL_ERROR/);
+      if (scenario === 'lateProof') assert.match(session.diagnostics(), /QR_REFRESHED/);
+    } finally { await session.close(); }
+  });
+}

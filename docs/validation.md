@@ -33,6 +33,12 @@ For the browser subpath implementation, all 38 Node unit/integration/interoperab
 
 WebKit could not launch because required host shared libraries were unavailable, including after a temporary local dependency setup; its eight E2E tests are therefore unverified, rather than product test failures. The actual Apache configuration, TLS deployment and real-phone behavior were not verified in this environment.
 
+## Review fixes 3.1 and 3.2 verification
+
+All 49 Node unit/integration/interoperability tests passed, including actual Go receiver tests for delayed commit notifications crossing the QR deadline and late proofs followed by server-driven QR renewal. Relay tests inject a monotonic clock to check ready exchange across the pairing deadline. IP tests cover IPv6 /64 and configurable /56 aggregation, non-byte-aligned prefixes, IPv4-mapped spellings, proxy trust, shared authentication/socket limits and LRU eviction at 4,096 entries. TypeScript, generated-definition and i18n checks, the production build, Go race tests and Go vet also passed.
+
+All 28 Chromium and Firefox E2E cases passed across the root and `/qrtoss/` deployments, including the four commit-boundary cases rerun after correcting the test clock setup. The new browser tests hold commit/proof notifications and advance client/server clocks to exercise QR and candidate deadline boundaries. WebKit still cannot launch because host shared libraries are missing; its 14 E2E cases remain unverified. Real-phone and deployed HTTPS checks remain required.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

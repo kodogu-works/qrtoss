@@ -22,7 +22,8 @@ The default Compose subnet is `172.30.0.0/24`; change it and the trusted proxy C
 | `MAX_ROOMS` | `1000` | Concurrent room limit |
 | `MAX_SOCKETS` | `2200` | Total WebSocket limit |
 | `MAX_UNAUTHENTICATED_SOCKETS` | `100` | Unauthenticated connection limit |
-| `MAX_SOCKETS_PER_IP` | `60` | Per-IP connection limit |
+| `MAX_SOCKETS_PER_IP` | `60` | Connection limit per IPv4 address or aggregated IPv6 prefix |
+| `IPV6_PREFIX_LENGTH` | `64` | IPv6 aggregation prefix length (1–128), shared by room creation, authentication failures and connection limits; use `56` to group a /56 |
 | `TRUST_PROXY_CIDRS` | Empty outside Compose | Comma-separated directly connected proxy CIDRs; never trust arbitrary forwarded headers |
 | `LOG_LEVEL` | `warn` | Operational policy; payload/access logging remains disabled |
 
