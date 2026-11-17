@@ -2055,41 +2055,50 @@ Workerは、`PUBLIC_ORIGIN`が第16.2節の条件を満たさない場合、全�
 
 ### 17.1 構成
 
-npm workspacesとGo moduleを含む一つのリポジトリを参照構成とする。以下は実装時に作るパスであり、本書と一緒にコードが生成済みであることを意味しない。
+ルートのnpm packageと`cli/`のGo moduleを含む一つのリポジトリで管理する。npmの依存関係・コマンドはルートの`package.json`にまとめ、Web・Node版・Cloudflare版・共有モジュールを同じpackageから扱う。以下は現在の実装のパスと責務である。
 
 | パス | 主な責務 |
 | --- | --- |
-| `apps/web/` | Vite、受信画面・送信画面、CSS、i18n |
-| `apps/web/src/crypto/` | HKDF、proof、envelope、方向別seq、鍵の破棄 |
-| `apps/web/src/session/` | ペアリング、状態遷移、ACK、期限、履歴イベント |
-| `apps/web/src/scanner/` | QR読取アダプター（qr-scanner）、カメラ、Worker、停止処理 |
-| `apps/web/src/content/` | 原文保持、URI分類、コピー、遷移 |
-| `apps/web/src/locales/{ja,en,es}.json` | Web UIの辞書 |
-| `apps/relay/` | Node版：HTTP、WSS、room Map、認証、期限、即時中継のアダプター |
-| `packages/relay-core/` | 実行環境に依存しないroom処理（第15.6.9節）。Node版とCloudflare版で共有 |
-| `apps/relay-cloudflare/` | Cloudflare版：Worker、RoomDO、CapacityDO、`wrangler.jsonc` |
-| `packages/protocol/` | TS用の共有型、実行時schema、正規base64url、生成した定数・コード |
+| `package.json`、`package-lock.json` | npmの固定依存と、開発・生成・検査・試験・ビルド・配備のコマンド |
+| `web/` | Vite設定、受信・送信ページのHTML、Webのソース |
+| `web/src/receiver.ts`、`web/src/sender.ts` | 受信画面・送信画面の状態、利用者操作、表示・送信・遷移、ページの表示・離脱イベント |
+| `web/src/session.ts` | ペアリング、WebSocket、状態遷移、ACK、期限 |
+| `web/src/scanner.ts` | QR読取アダプター（qr-scanner）、カメラ、Worker、停止処理 |
+| `web/src/content.ts` | 本文の分類、URIの検証、遷移可否の判定 |
+| `web/src/view.ts`、`web/src/style.css` | 共通の画面構造・描画補助とCSS |
+| `web/src/i18n.ts` | Web UIのja/en/es辞書と言語選択 |
+| `web/src/paths.ts` | ベースパスの検証とHTTP・WSS・画面URLの組み立て |
+| `server/src/` | Node版：HTTP、WSS、静的配信、IP取得、共有room処理へのアダプター |
+| `server/cloudflare/src/` | Cloudflare版：Worker、RoomDO、CapacityDO、内部WS中継、実行環境へのアダプター |
+| `wrangler.jsonc` | Cloudflare版のエントリーポイント、互換性設定、DO・asset binding、公開origin・ルート、運用上限 |
+| `packages/relay-core/src/` | 共有のroom状態機械、認証、期限、即時中継、HTTP・IP・容量・リース・送信量の制限 |
+| `packages/protocol/src/` | TSの共有型・実行時schema・正規base64url、HKDF・proof・envelope・方向別seq、生成した定数・検証定義 |
 | `protocol/` | 言語非依存の定義（`constants.json`、`error-codes.json`、close reasonの対応）とテストベクトル（`vectors/`） |
 | `cli/` | Go module（`go.mod`、`go.sum`） |
 | `cli/cmd/qrtoss/` | エントリーポイント、終了コード、シグナル |
-| `cli/internal/cli/` | 引数・環境変数・公開originの検証と正規化 |
-| `cli/internal/session/` | 状態遷移、タイマー、1件受信後の終了、重複判定 |
-| `cli/internal/protocol/` | HTTP・WSS・ペアリング・暗号・ack、生成した定数 |
-| `cli/internal/output/` | text/JSON Linesの検証・符号化、直列書き込み |
-| `cli/internal/terminal/` | stderrのTTY・寸法判定、QR描画、追記式の状態表示 |
-| `cli/internal/i18n/` | ja/en/esの表示文言（埋め込み辞書） |
-| `cli/scripts/run.sh.tmpl` | 版固定の試用ランチャーのテンプレート |
-| `tests/unit/` | 分類、符号化、状態、仮想時計、暗号テストベクトル（TS） |
-| `tests/integration/` | 実際のrelayを使う認証・中継・障害試験 |
+| `cli/internal/client/` | 引数・環境変数・公開originの検証、HTTP・WSS、暗号・制御検証、受信状態型、ACK、期限、重複判定、1件受信後の終了 |
+| `cli/internal/client/output.go` | text/JSON Linesの検証・符号化、直列書き込み |
+| `cli/internal/client/terminal.go` | stderrのTTY・寸法判定、QR描画、状態表示、ja/en/esの埋め込み辞書 |
+| `cli/internal/constants/` | 生成したGoの共通定数・エラーコードと`go generate`の入口 |
+| `scripts/run.sh.in` | 版固定の試用ランチャーのテンプレート |
+| `scripts/release-cli.sh`、`scripts/release-launcher.mjs` | CLIのクロスビルド、配布物・ランチャー・Homebrew formulaの生成 |
+| `scripts/generate-protocol.mjs`、`scripts/control-schema.mjs` | 共通定義からTS・Goの定数・制御検証定義を生成 |
+| `scripts/` | 開発サーバー、Cloudflareコマンド・静的検査、辞書・ライセンス等の検査・生成補助 |
+| `tests/protocol/` | TSの暗号・制御メッセージと共通テストベクトルの検証 |
+| `tests/core/` | 共有の認証競合、送信量・容量・リース・IP制限の単体試験 |
+| `tests/web/` | 分類、言語、ベースパス、制御通知schemaの単体試験 |
+| `tests/relay/` | 実際のrelayを使う認証・中継・期限・制限・障害試験。共通試験は両版で実行 |
+| `tests/cloudflare/` | ローカルworkerdのfixture、試験専用エントリーポイントと制御RPC、Cloudflare固有の統合試験 |
 | `tests/e2e/` | ブラウザ2コンテキスト、カメラfixture、UI試験 |
-| `tests/interop/` | Web送信ページ・relay・CLIバイナリを組み合わせた相互運用試験 |
-| `tests/fixtures/` | 公開可能なQR画像とテスト用固定鍵。実利用データ禁止 |
+| `tests/interop/` | TSの送信peer・relay・実Go CLIを組み合わせた相互運用試験 |
+| `tests/helpers/` | 中継アダプターの切り替え、生のHTTP upgrade要求の共通ヘルパー |
 | `deploy/` | プロキシ設定、自己ホスト補助設定 |
 | `docs/` | 本仕様、脅威モデル、運用、リリース手順、CLIの利用・配布説明 |
+| `.github/workflows/ci.yml` | 生成差分・型・整形・静的検査・試験・ビルド・脆弱性検査のCI |
 | `Dockerfile`、`compose.yaml`、`.env.example` | 再現可能な配備 |
 | `LICENSE.md`、`THIRD_PARTY_NOTICES` | MIT Licenseの全文・著作権表示、および第三者コードの公開・再配布の条件 |
 
-既存リポジトリの構造がある場合はそれに合わせてよいが、`protocol/`を正とする共通定義の仕組みは維持する。
+配置を変更する場合はこの表も更新し、`protocol/`を正とする共通定義の仕組みを維持する。試験用の固定値は`protocol/vectors/`と各試験のソースで管理し、QR画像は試験時に生成する。実利用データをfixtureへ含めない。
 
 ### 17.2 共通定義の管理
 
@@ -2111,7 +2120,7 @@ TypeScriptの`packages/protocol`はGoから参照できないため、言語非�
 | `npm ci` | lockfileどおりに依存をインストール |
 | `npm run dev` | webとrelayを同一origin相当で起動。実機向けHTTPS手順も提供 |
 | `npm run gen:protocol` | `protocol/`からTS・Goの定数と制御メッセージ検証定義を生成 |
-| `npm run typecheck` | 全workspaceの型検査 |
+| `npm run typecheck` | Node・Web・Cloudflare版のTypeScript型検査 |
 | `npm run lint` | 静的検査 |
 | `npm test` | 単体・暗号fixture・仮想時計テスト |
 | `npm run test:integration` | relay統合テスト |
@@ -2403,7 +2412,7 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 
 ## 20. 参考資料
 
-確認日：2026-11-15。以下はブラウザAPI・暗号プリミティブ・依存ライブラリ・端末・配布の挙動の根拠となる資料である。5分・30分等の値、独自ペアリング手順、ACK手順、CLIのオプション・時間・上限・終了コード、言語の導入順は本サービスの設計上の決定であり、外部仕様が一律に要求するものではない。
+S01〜S36の初回確認日：2026-11-15。Cloudflare関連のS37〜S46の確認記録は本節末尾に示す。以下はブラウザAPI・暗号プリミティブ・依存ライブラリ・端末・配布の挙動の根拠となる資料である。5分・30分等の値、独自ペアリング手順、ACK手順、CLIのオプション・時間・上限・終了コード、言語の導入順は本サービスの設計上の決定であり、外部仕様が一律に要求するものではない。
 
 | ID | 資料 | 主な参照箇所 |
 | --- | --- | --- |
@@ -2454,7 +2463,17 @@ I02の純粋関数・暗号fixtureとI03のrelayは並行して進められる�
 | S45 | [Cloudflare: Workers Logs][S45] | Workers Logsの記録内容と無効化 |
 | S46 | [Cloudflare: Compatibility flags — WebSocket Compression][S46] | 現行日付では圧縮が既定で有効、無効化フラグの受信・送信接続への適用 |
 
-S37〜S45は1.1.0の改訂（2026-11-18）で追加し、Cloudflare版の実装時に公式文書のURLと内容を確認した。標準WebSocket API・休止時のメモリ消失・SQLite DOのプラン条件・時刻のI/O依存・ASSETS binding・Workers Logsの設定を確認済み。本番配備に依存する条件の検証状況は`docs/validation.md`に記載する。
+S37〜S45は1.1.0で追加し、Cloudflare版の実装時に公式文書のURLと内容を確認した。今回の再確認日：2026-11-17（America/Chicago）。S46を含む次の公式資料のURLと該当する本文を再確認した。
+
+| 参照ID | 確認した事項 |
+| --- | --- |
+| S37〜S39 | IDによるクライアント間の調整、標準WebSocket APIとHibernation API、休止時のメモリ状態の消失 |
+| S40 | `ASSETS` binding、`run_worker_first`、`not_found_handling`による配信・ルーティング |
+| S41・S42 | SQLite-backed DOのFree/Paidプラン条件、標準WebSocketのduration課金、WebSocketメッセージ・CPU等の上限 |
+| S43・S44 | 本番の時刻APIがI/O後に進むこと、`CF-Connecting-IP`とWorker subrequestでの扱い |
+| S45・S46 | Workers Logsの記録内容・有効化設定、受信・送信接続のWebSocket圧縮フラグ |
+
+配備先のゾーン設定、別ネットワーク・実機ブラウザでの接続、DOストレージの使用量・操作数の実測は、第18.7節の受入試験で確認する。実施済み・未実施の状況は[`docs/validation.md`](validation.md)に記録しており、上表は公式資料の確認範囲を示す。
 
 [S01]: https://nodejs.org/en/about/previous-releases
 [S02]: https://github.com/websockets/ws

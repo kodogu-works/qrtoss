@@ -92,6 +92,12 @@ Core regressions cover both release/update orders, previously registered and unk
 
 On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, `npm test` passed all 165 tests and `npm run test:cloudflare` passed all 56 tests, including all 12 real Go CLI scenarios on each adapter and the existing CapacityDO restart/recovery and non-persistence tests. Both runtime type checks, lint, formatting, generated-definition checks, Cloudflare static checks, the Web build and Wrangler's deployment dry run passed. No staging deployment or real-device acceptance was performed.
 
+## Specification record reconciliation (7.7)
+
+Specification 17.1 now lists the implemented Web, Node, Cloudflare, shared-module, Go CLI, generator and test paths, including the root `wrangler.jsonc`. It describes the root npm package and `cli/` Go module. All 46 listed repository paths and 74 relative file links in the three changed documents were checked against the repository; obsolete layout names were removed from the section.
+
+The ten official Cloudflare references S37–S46 were revisited on 2026-11-17 (America/Chicago). Specification 20 records the date and reviewed topics: object identity and lifecycle, WebSocket APIs and hibernation, static asset routing, plan/usage limits, timers, client-IP headers, logging and compression flags. The existing confirmation note for S37–S45 was already present when this correction began. Documentation review does not add staging, cross-network or real-device test results; those remain the review 7.8 acceptance items.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.
