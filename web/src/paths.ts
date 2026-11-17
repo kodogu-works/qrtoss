@@ -1,8 +1,13 @@
 /** Same-origin mount path, shared by the build configuration and browser. */
 export function validateBasePath(value: string): string {
-  if (!value.endsWith('/') || !/^\/(?:[A-Za-z0-9._~-]+\/)*$/.test(value) ||
-      value.split('/').some(segment => segment === '.' || segment === '..')) {
-    throw new Error('QRTOSS_BASE_PATH must be / or an absolute path with a trailing / and URL-safe segments');
+  if (
+    !value.endsWith('/') ||
+    !/^\/(?:[A-Za-z0-9._~-]+\/)*$/.test(value) ||
+    value.split('/').some((segment) => segment === '.' || segment === '..')
+  ) {
+    throw new Error(
+      'QRTOSS_BASE_PATH must be / or an absolute path with a trailing / and URL-safe segments',
+    );
   }
   return value;
 }

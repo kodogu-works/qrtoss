@@ -12,7 +12,7 @@
     "generate": "node scripts/generate-protocol.mjs",
     "check:generated": "node scripts/generate-protocol.mjs --check",
     "check": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "biome lint --error-on-warnings",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:unit": "node --import tsx --test tests/protocol/*.test.ts",
     "test:interop": "node --import tsx --test tests/interop/*.test.ts",
@@ -24,7 +24,9 @@
     "test:integration": "node --import tsx --test tests/relay/*.test.ts",
     "test:e2e": "playwright test",
     "notices": "node scripts/notices.mjs",
-    "release:cli": "sh scripts/release-cli.sh"
+    "release:cli": "sh scripts/release-cli.sh",
+    "format": "biome format --write",
+    "format:check": "biome format"
   },
   "dependencies": {
     "qr-scanner": "1.4.2",
@@ -32,6 +34,7 @@
     "ws": "8.23.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@playwright/test": "1.65.1",
     "@types/node": "26.6.6",
     "@types/pngjs": "6.0.5",

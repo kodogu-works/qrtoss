@@ -4,7 +4,8 @@ import { createRelay } from './index.ts';
 function positive(name: string, fallback: number) {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
-  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error('CONFIG_INVALID');
+  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+    throw new Error('CONFIG_INVALID');
   return Number(raw);
 }
 try {
@@ -18,7 +19,9 @@ try {
     maxUnauthenticatedSockets: positive('MAX_UNAUTHENTICATED_SOCKETS', 100),
     maxSocketsPerIp: positive('MAX_SOCKETS_PER_IP', 60),
     ipv6PrefixLength: positive('IPV6_PREFIX_LENGTH', 64),
-    trustProxyCidrs: process.env.TRUST_PROXY_CIDRS?.split(',').map(x => x.trim()).filter(Boolean),
+    trustProxyCidrs: process.env.TRUST_PROXY_CIDRS?.split(',')
+      .map((x) => x.trim())
+      .filter(Boolean),
   });
   await relay.listen(positive('PORT', 8080), process.env.HOST ?? '0.0.0.0');
   process.stderr.write('qrtoss relay started\n');
@@ -28,7 +31,10 @@ try {
     closing = true;
     const timeout = setTimeout(() => process.exit(1), 5000);
     timeout.unref();
-    void relay.close().then(() => { clearTimeout(timeout); process.exitCode = 0; });
+    void relay.close().then(() => {
+      clearTimeout(timeout);
+      process.exitCode = 0;
+    });
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);

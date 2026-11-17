@@ -10,17 +10,16 @@ export function normalizeIp(address: string): string | undefined {
   const [left, right] = host.split('::');
   const head = left ? left.split(':') : [];
   const tail = right ? right.split(':') : [];
-  const words = right === undefined ? head : [
-    ...head,
-    ...Array<string>(8 - head.length - tail.length).fill('0'),
-    ...tail,
-  ];
-  const bytes = words.flatMap(word => [parseInt(word, 16) >> 8, parseInt(word, 16) & 255]);
+  const words =
+    right === undefined
+      ? head
+      : [...head, ...Array<string>(8 - head.length - tail.length).fill('0'), ...tail];
+  const bytes = words.flatMap((word) => [parseInt(word, 16) >> 8, parseInt(word, 16) & 255]);
   // Treat all spellings of IPv4-mapped IPv6 as the same IPv4 address.
-  if (bytes.slice(0, 10).every(byte => byte === 0) && bytes[10] === 255 && bytes[11] === 255) {
+  if (bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 255 && bytes[11] === 255) {
     return bytes.slice(12).join('.');
   }
-  return words.map(word => word.padStart(4, '0')).join(':');
+  return words.map((word) => word.padStart(4, '0')).join(':');
 }
 
 /** One key shared by room creation, authentication failures and socket counts. */

@@ -33,11 +33,15 @@
 
 #### コードの記述密度と静的検査
 
+**対応済み（TypeScript・JavaScript）**：Biomeによる整形とlintを導入し、CIで両方を検査する。型検査は`npm run check`として維持し、生成コードは整形対象から除外する。以下は修正前の指摘である。
+
 [`server/src/index.ts`](../server/src/index.ts#L307-L310)には300文字を超える条件式があり、[`web/src/main.ts`](../web/src/main.ts)・[`web/src/session.ts`](../web/src/session.ts)は1行に複数の文を詰めた記述が多い。外部レビューを前提とするセキュリティ関連コードでは、読みにくさがレビューコストと見落としのリスクに直結する。また`npm run lint`は`tsc --noEmit`と同一で、実質的なリンターがない。
 
 **提案**：Prettier（またはBiome）とESLintを導入し、CIで検査する。整形は機能変更と別のコミットで行う。
 
 #### 状態の暗黙性
+
+**Web部分は対応済み**：`main.ts`を初期化とページ選択に絞り、送信・受信の処理と状態を`sender.ts`・`receiver.ts`へ分離した。共通の画面枠は`view.ts`で共有する。CLIの明示的な状態型への置き換えは未対応。以下は修正前の指摘である。
 
 - [`web/src/main.ts`](../web/src/main.ts)は約25個のモジュールレベル変数で、受信ページと送信ページを`sender ? … : …`の分岐により1ファイルで扱っている。
 - CLIの[`receive()`](../cli/internal/client/session.go#L154)は約530行の単一関数で、状態を`committed/ready/active/writing/written/rejected/disconnected`の7つのboolで表している。
@@ -110,7 +114,7 @@
 | ---: | --- | --- |
 | 1 | 3.1 期限競合の修正と回帰試験 | 仕様違反。CLIは異常終了（コード4）につながる |
 | 2 | 3.2 IPv6の集約とLRU削除 | 公開配備での濫用対策 |
-| 3 | 2.2 フォーマッター・リンター導入、`main.ts`の分割 | 外部レビューと保守のコスト削減 |
+| 3 | 2.2 フォーマッター・リンター導入、`main.ts`の分割（対応済み） | 外部レビューと保守のコスト削減 |
 | 4 | 2.2 CLI `receive()`の明示的な状態型への再構成 | 不正な状態の組合せを排除 |
 | 5 | 2.2 制御メッセージschemaの`protocol/`からの生成 | 言語間の検証のずれを防止 |
 | 6 | 3.3 その他の低重要度項目 | 個別に小さく対応可能 |
