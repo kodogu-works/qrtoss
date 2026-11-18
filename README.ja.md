@@ -1,4 +1,7 @@
-# qrtoss
+<h1>
+  <img src="docs/assets/qrtoss-logo.svg#gh-light-mode-only" alt="qrtoss" width="216" height="48">
+  <img src="docs/assets/qrtoss-logo-dark.svg#gh-dark-mode-only" alt="qrtoss" width="216" height="48">
+</h1>
 
 [English](README.md) · [Español](README.es.md)
 
