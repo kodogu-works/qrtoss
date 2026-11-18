@@ -162,9 +162,22 @@ for (const basePath of ['/', '/qrtoss/'])
           const fixture = window as unknown as {
             qrCameraTracks: MediaStreamTrack[];
             cameraReady: boolean;
+            cameraDebug: {
+              draws: number;
+              ticks: number;
+              lastReady: boolean;
+              stopped: boolean;
+              canvas?: WeakRef<HTMLCanvasElement>;
+            };
           };
           fixture.qrCameraTracks = [];
           fixture.cameraReady = false;
+          const debug = (fixture.cameraDebug = {
+            draws: 0,
+            ticks: 0,
+            lastReady: false,
+            stopped: false,
+          });
           // WebKit can collect and recreate the mediaDevices wrapper, losing own properties.
           // Keep the camera override on the prototype so it survives garbage collection.
           Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
@@ -175,19 +188,26 @@ for (const basePath of ['/', '/qrtoss/'])
               await img.decode();
               const c = document.createElement('canvas');
               c.width = c.height = 512;
+              fixture.cameraDebug.canvas = new WeakRef(c);
+              const ctx = c.getContext('2d')!;
+              const stream = c.captureStream(0);
+              const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
               const draw = () => {
-                const ctx = c.getContext('2d')!;
+                debug.draws++;
+                debug.lastReady = fixture.cameraReady;
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, 512, 512);
                 if (fixture.cameraReady) ctx.drawImage(img, 106, 106, 300, 300);
+                track.requestFrame();
               };
               draw();
-              const stream = c.captureStream(15),
-                timer = setInterval(() => {
-                  if (stream.getTracks().every((track) => track.readyState === 'ended'))
+              const timer = setInterval(() => {
+                  debug.ticks++;
+                  if (stream.getTracks().every((track) => track.readyState === 'ended')) {
+                    debug.stopped = true;
                     clearInterval(timer);
-                  else draw();
-                }, 66);
+                  } else draw();
+              }, 66);
               if (zoom) {
                 for (const track of stream.getVideoTracks()) {
                   let value = 1;
@@ -221,7 +241,48 @@ for (const basePath of ['/', '/qrtoss/'])
       await page.evaluate(() => {
         (window as unknown as { cameraReady: boolean }).cameraReady = true;
       });
-      await expect(page.locator('#sender-text')).toHaveText(text);
+      try {
+        await expect(page.locator('#sender-text')).toHaveText(text);
+      } catch (error) {
+        const media = await page.locator('#video').evaluate((video: HTMLVideoElement) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          if (canvas.width && canvas.height) canvas.getContext('2d')!.drawImage(video, 0, 0);
+          return {
+            debug: (window as unknown as { cameraDebug: unknown }).cameraDebug,
+            source: (
+              window as unknown as { cameraDebug: { canvas?: WeakRef<HTMLCanvasElement> } }
+            ).cameraDebug.canvas?.deref()?.toDataURL(),
+            ready: (window as unknown as { cameraReady: boolean }).cameraReady,
+            visibility: document.visibilityState,
+            hidden: document.hidden,
+            paused: video.paused,
+            ended: video.ended,
+            readyState: video.readyState,
+            width: video.videoWidth,
+            height: video.videoHeight,
+            currentTime: video.currentTime,
+            tracks: (video.srcObject as MediaStream | null)?.getTracks().map((track) => ({
+              readyState: track.readyState,
+              enabled: track.enabled,
+              muted: track.muted,
+            })),
+            frame: canvas.toDataURL(),
+          };
+        });
+        console.log('camera failure diagnostics', { ...media, frame: undefined, source: undefined });
+        if (media.source)
+          await test.info().attach('camera-source.png', {
+            body: Buffer.from(media.source.split(',')[1], 'base64'),
+            contentType: 'image/png',
+          });
+        await test.info().attach('camera-frame.png', {
+          body: Buffer.from(media.frame.split(',')[1], 'base64'),
+          contentType: 'image/png',
+        });
+        throw error;
+      }
     }
     async function pages(browser: Browser, payload: string, zoom = false) {
       const rc = await browser.newContext({ locale: 'en-US' }),
