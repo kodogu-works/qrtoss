@@ -192,15 +192,13 @@ for (const basePath of ['/', '/qrtoss/'])
               c.width = c.height = 512;
               fixture.cameraDebug.canvas = new WeakRef(c);
               const ctx = c.getContext('2d')!;
-              const stream = c.captureStream(0);
-              const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+              const stream = c.captureStream(15);
               const draw = () => {
                 debug.draws++;
                 debug.lastReady = fixture.cameraReady;
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, 512, 512);
                 if (fixture.cameraReady) ctx.drawImage(img, 106, 106, 300, 300);
-                track.requestFrame();
               };
               draw();
               const timer = setInterval(() => {

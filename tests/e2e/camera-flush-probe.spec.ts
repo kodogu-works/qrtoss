@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Socket } from 'node:net';
 import { createRelay, type RelayOptions } from '../../server/src/index.ts';
+import { C } from '../../packages/protocol/src/index.ts';
 import { translate } from '../../web/src/i18n.ts';
 
 /** Match the production proxy contract: strip the mount from HTTP and WS paths. */
@@ -342,7 +343,7 @@ for (const basePath of ['/', '/qrtoss/'])
       await expect(s).toHaveURL(base + 'send');
       await expect(s.locator('#camera')).toBeVisible();
       await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-      await expect(r.locator('#expiry')).toHaveText('0 seconds');
+      await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
       return {
         r,
         s,
@@ -460,7 +461,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await fakeCamera(s, 'fixture');
         await s.goto(original);
         await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-        await expect(r.locator('#expiry')).toHaveText('0 seconds');
+        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
         expect(await geometry()).toEqual(before);
         const image = PNG.sync.read(await r.locator('#qr').screenshot());
         expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeNull();
@@ -470,7 +471,12 @@ for (const basePath of ['/', '/qrtoss/'])
             translate(language, 'receiverConnectedPrompt'),
           );
           await expect(r.locator('#expiry')).toHaveText(
-            translate(language, 'qrRemaining', { seconds: 0 }),
+            new RegExp(
+              translate(language, 'qrRemaining', { seconds: C.SESSION_IDLE_SECONDS }).replace(
+                String(C.SESSION_IDLE_SECONDS),
+                '1[78]\\d{2}',
+              ),
+            ),
           );
         }
         await r.screenshot({
@@ -554,7 +560,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('#sender-instruction')).toHaveText(
           'Scan the QR code you want to send',
         );
-        await expect(r.locator('#expiry')).toHaveText('0 seconds');
+        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
         for (const viewport of [
           { width: 390, height: 844 },
           { width: 375, height: 667 },
