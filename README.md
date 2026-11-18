@@ -1,4 +1,9 @@
-# qrtoss
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/qrtoss-logo-dark.svg">
+    <img src="docs/assets/qrtoss-logo.svg" alt="qrtoss" width="216" height="48">
+  </picture>
+</h1>
 
 [日本語](README.ja.md) · [Español](README.es.md)
 
