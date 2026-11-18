@@ -172,12 +172,13 @@ for (const basePath of ['/', '/qrtoss/'])
           };
           fixture.qrCameraTracks = [];
           fixture.cameraReady = false;
-          const debug = (fixture.cameraDebug = {
+          const debug: typeof fixture.cameraDebug = {
             draws: 0,
             ticks: 0,
             lastReady: false,
             stopped: false,
-          });
+          };
+          fixture.cameraDebug = debug;
           // WebKit can collect and recreate the mediaDevices wrapper, losing own properties.
           // Keep the camera override on the prototype so it survives garbage collection.
           Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {

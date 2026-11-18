@@ -69,9 +69,9 @@ export function startReceiver(paths: AppPaths): void {
     el<HTMLButtonElement>('open').disabled = !!current && !current.done;
   }
   function renderExpiry(): void {
+    const deadline = qrConsumed ? session?.sendDeadline : expiry;
     el('expiry').textContent = translate(language, 'qrRemaining', {
-      seconds:
-        qrConsumed || !expiry ? 0 : Math.max(0, Math.ceil((expiry - performance.now()) / 1000)),
+      seconds: deadline ? Math.max(0, Math.ceil((deadline - performance.now()) / 1000)) : 0,
     });
   }
   function consumeQR(): void {
@@ -81,19 +81,47 @@ export function startReceiver(paths: AppPaths): void {
     // Destroy the capability-bearing bitmap. This blurred replacement encodes nothing.
     const target = el<HTMLCanvasElement>('qr');
     const placeholder = document.createElement('canvas');
-    placeholder.width = placeholder.height = 256;
+    placeholder.width = target.width;
+    placeholder.height = target.height;
     const context = placeholder.getContext('2d')!;
+    context.scale(placeholder.width / 256, placeholder.height / 256);
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, 256, 256);
     context.fillStyle = '#171717';
-    for (let y = 0; y < 23; y++)
-      for (let x = 0; x < 23; x++)
-        if ((x * 17 + y * 29) % 7 < 3) context.fillRect(24 + x * 9, 24 + y * 9, 9, 9);
-    // Blur into the replacement pixels, so screenshots cannot recover the original QR.
-    context.filter = 'blur(9px)';
-    context.drawImage(placeholder, 0, 0);
-    target.width = target.height = 256;
-    target.getContext('2d')!.drawImage(placeholder, 0, 0);
+    // A decorative matrix with finder patterns, but no encoded data or timing patterns.
+    const modules = 41;
+    const cell = 256 / (modules + 8);
+    for (let y = 0; y < modules; y++) {
+      for (let x = 0; x < modules; x++) {
+        const finder = [
+          [0, 0],
+          [modules - 7, 0],
+          [0, modules - 7],
+        ].find(([left, top]) => x >= left - 1 && x <= left + 7 && y >= top - 1 && y <= top + 7);
+        let dark = (x * 17 + y * 29 + x * y) % 7 < 3;
+        if (finder) {
+          const dx = x - finder[0];
+          const dy = y - finder[1];
+          dark =
+            dx >= 0 &&
+            dx < 7 &&
+            dy >= 0 &&
+            dy < 7 &&
+            (dx === 0 ||
+              dx === 6 ||
+              dy === 0 ||
+              dy === 6 ||
+              (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4));
+        }
+        if (dark) context.fillRect((4 + x) * cell, (4 + y) * cell, cell, cell);
+      }
+    }
+    // Burn a light blur into unrelated pixels; the original capability is destroyed.
+    const output = target.getContext('2d')!;
+    output.clearRect(0, 0, target.width, target.height);
+    output.filter = `blur(${(1.5 * target.width) / 256}px)`;
+    output.drawImage(placeholder, 0, 0);
+    output.filter = 'none';
     el('qr-loading').hidden = true;
   }
 

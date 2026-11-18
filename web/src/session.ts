@@ -74,6 +74,9 @@ export class Session {
     this.role = role;
     this.mode = mode;
   }
+  get sendDeadline(): number {
+    return this.phase === 'connected' ? this.idleDeadline : 0;
+  }
   private current(g: number) {
     if (g !== this.generation || this.closed) throw new Error('STALE_SESSION');
   }

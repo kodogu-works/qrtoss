@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Socket } from 'node:net';
 import { createRelay, type RelayOptions } from '../../server/src/index.ts';
+import { C } from '../../packages/protocol/src/index.ts';
 import { translate } from '../../web/src/i18n.ts';
 
 /** Match the production proxy contract: strip the mount from HTTP and WS paths. */
@@ -172,12 +173,13 @@ for (const basePath of ['/', '/qrtoss/'])
           };
           fixture.qrCameraTracks = [];
           fixture.cameraReady = false;
-          const debug = (fixture.cameraDebug = {
+          const debug: typeof fixture.cameraDebug = {
             draws: 0,
             ticks: 0,
             lastReady: false,
             stopped: false,
-          });
+          };
+          fixture.cameraDebug = debug;
           // WebKit can collect and recreate the mediaDevices wrapper, losing own properties.
           // Keep the camera override on the prototype so it survives garbage collection.
           Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
@@ -202,11 +204,11 @@ for (const basePath of ['/', '/qrtoss/'])
               };
               draw();
               const timer = setInterval(() => {
-                  debug.ticks++;
-                  if (stream.getTracks().every((track) => track.readyState === 'ended')) {
-                    debug.stopped = true;
-                    clearInterval(timer);
-                  } else draw();
+                debug.ticks++;
+                if (stream.getTracks().every((track) => track.readyState === 'ended')) {
+                  debug.stopped = true;
+                  clearInterval(timer);
+                } else draw();
               }, 66);
               if (zoom) {
                 for (const track of stream.getVideoTracks()) {
@@ -253,7 +255,9 @@ for (const basePath of ['/', '/qrtoss/'])
             debug: (window as unknown as { cameraDebug: unknown }).cameraDebug,
             source: (
               window as unknown as { cameraDebug: { canvas?: WeakRef<HTMLCanvasElement> } }
-            ).cameraDebug.canvas?.deref()?.toDataURL(),
+            ).cameraDebug.canvas
+              ?.deref()
+              ?.toDataURL(),
             ready: (window as unknown as { cameraReady: boolean }).cameraReady,
             visibility: document.visibilityState,
             hidden: document.hidden,
@@ -271,7 +275,11 @@ for (const basePath of ['/', '/qrtoss/'])
             frame: canvas.toDataURL(),
           };
         });
-        console.log('camera failure diagnostics', { ...media, frame: undefined, source: undefined });
+        console.log('camera failure diagnostics', {
+          ...media,
+          frame: undefined,
+          source: undefined,
+        });
         if (media.source)
           await test.info().attach('camera-source.png', {
             body: Buffer.from(media.source.split(',')[1], 'base64'),
@@ -336,7 +344,7 @@ for (const basePath of ['/', '/qrtoss/'])
       await expect(s).toHaveURL(base + 'send');
       await expect(s.locator('#camera')).toBeVisible();
       await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-      await expect(r.locator('#expiry')).toHaveText('0 seconds');
+      await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
       return {
         r,
         s,
@@ -451,11 +459,22 @@ for (const basePath of ['/', '/qrtoss/'])
             }),
           );
         const before = await geometry();
+        const bitmap = await r.locator('#qr').evaluate((node) => {
+          const canvas = node as HTMLCanvasElement;
+          return [canvas.width, canvas.height];
+        });
         await fakeCamera(s, 'fixture');
         await s.goto(original);
         await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-        await expect(r.locator('#expiry')).toHaveText('0 seconds');
+        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
         expect(await geometry()).toEqual(before);
+        expect(
+          await r.locator('#qr').evaluate((node) => {
+            const canvas = node as HTMLCanvasElement;
+            return [canvas.width, canvas.height];
+          }),
+        ).toEqual(bitmap);
+        await expect(r.locator('#expiry')).toHaveText(/179\d seconds/);
         const image = PNG.sync.read(await r.locator('#qr').screenshot());
         expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeNull();
         for (const language of ['ja', 'en', 'es'] as const) {
@@ -464,7 +483,12 @@ for (const basePath of ['/', '/qrtoss/'])
             translate(language, 'receiverConnectedPrompt'),
           );
           await expect(r.locator('#expiry')).toHaveText(
-            translate(language, 'qrRemaining', { seconds: 0 }),
+            new RegExp(
+              translate(language, 'qrRemaining', { seconds: C.SESSION_IDLE_SECONDS }).replace(
+                String(C.SESSION_IDLE_SECONDS),
+                '1[78]\\d{2}',
+              ),
+            ),
           );
         }
         await r.screenshot({
@@ -548,7 +572,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('#sender-instruction')).toHaveText(
           'Scan the QR code you want to send',
         );
-        await expect(r.locator('#expiry')).toHaveText('0 seconds');
+        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
         for (const viewport of [
           { width: 390, height: 844 },
           { width: 375, height: 667 },
