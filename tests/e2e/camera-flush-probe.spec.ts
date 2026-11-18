@@ -200,13 +200,14 @@ for (const basePath of ['/', '/qrtoss/'])
                 ctx.getImageData(0, 0, 1, 1);
               };
               draw();
-              const stream = c.captureStream(15), timer = setInterval(() => {
+              const stream = c.captureStream(15),
+                timer = setInterval(() => {
                   debug.ticks++;
                   if (stream.getTracks().every((track) => track.readyState === 'ended')) {
                     debug.stopped = true;
                     clearInterval(timer);
                   } else draw();
-              }, 66);
+                }, 66);
               if (zoom) {
                 for (const track of stream.getVideoTracks()) {
                   let value = 1;
@@ -252,7 +253,9 @@ for (const basePath of ['/', '/qrtoss/'])
             debug: (window as unknown as { cameraDebug: unknown }).cameraDebug,
             source: (
               window as unknown as { cameraDebug: { canvas?: WeakRef<HTMLCanvasElement> } }
-            ).cameraDebug.canvas?.deref()?.toDataURL(),
+            ).cameraDebug.canvas
+              ?.deref()
+              ?.toDataURL(),
             ready: (window as unknown as { cameraReady: boolean }).cameraReady,
             visibility: document.visibilityState,
             hidden: document.hidden,
@@ -270,7 +273,11 @@ for (const basePath of ['/', '/qrtoss/'])
             frame: canvas.toDataURL(),
           };
         });
-        console.log('camera failure diagnostics', { ...media, frame: undefined, source: undefined });
+        console.log('camera failure diagnostics', {
+          ...media,
+          frame: undefined,
+          source: undefined,
+        });
         if (media.source)
           await test.info().attach('camera-source.png', {
             body: Buffer.from(media.source.split(',')[1], 'base64'),

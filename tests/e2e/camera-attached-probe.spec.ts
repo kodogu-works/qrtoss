@@ -189,7 +189,8 @@ for (const basePath of ['/', '/qrtoss/'])
               await img.decode();
               const c = document.createElement('canvas');
               c.width = c.height = 512;
-              c.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;pointer-events:none';
+              c.style.cssText =
+                'position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;pointer-events:none';
               document.body.append(c);
               fixture.cameraDebug.canvas = new WeakRef(c);
               const ctx = c.getContext('2d')!;
@@ -201,13 +202,14 @@ for (const basePath of ['/', '/qrtoss/'])
                 if (fixture.cameraReady) ctx.drawImage(img, 106, 106, 300, 300);
               };
               draw();
-              const stream = c.captureStream(15), timer = setInterval(() => {
+              const stream = c.captureStream(15),
+                timer = setInterval(() => {
                   debug.ticks++;
                   if (stream.getTracks().every((track) => track.readyState === 'ended')) {
                     debug.stopped = true;
                     clearInterval(timer);
                   } else draw();
-              }, 66);
+                }, 66);
               if (zoom) {
                 for (const track of stream.getVideoTracks()) {
                   let value = 1;
@@ -253,7 +255,9 @@ for (const basePath of ['/', '/qrtoss/'])
             debug: (window as unknown as { cameraDebug: unknown }).cameraDebug,
             source: (
               window as unknown as { cameraDebug: { canvas?: WeakRef<HTMLCanvasElement> } }
-            ).cameraDebug.canvas?.deref()?.toDataURL(),
+            ).cameraDebug.canvas
+              ?.deref()
+              ?.toDataURL(),
             ready: (window as unknown as { cameraReady: boolean }).cameraReady,
             visibility: document.visibilityState,
             hidden: document.hidden,
@@ -271,7 +275,11 @@ for (const basePath of ['/', '/qrtoss/'])
             frame: canvas.toDataURL(),
           };
         });
-        console.log('camera failure diagnostics', { ...media, frame: undefined, source: undefined });
+        console.log('camera failure diagnostics', {
+          ...media,
+          frame: undefined,
+          source: undefined,
+        });
         if (media.source)
           await test.info().attach('camera-source.png', {
             body: Buffer.from(media.source.split(',')[1], 'base64'),
