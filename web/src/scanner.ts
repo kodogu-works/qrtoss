@@ -47,6 +47,11 @@ export class Scanner {
   }
   async start(): Promise<void> {
     this.stop();
+    // A destroyed qr-scanner can still clear its video after a delayed pause.
+    // Give each run its own element so old cleanup cannot stop the new stream.
+    const video = this.video.cloneNode(false) as HTMLVideoElement;
+    this.video.replaceWith(video);
+    this.video = video;
     const g = this.generation;
     if (!isSecureContext || !navigator.mediaDevices?.getUserMedia)
       throw new Error('CAMERA_INSECURE');

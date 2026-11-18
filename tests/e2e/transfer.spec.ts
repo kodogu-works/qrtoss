@@ -513,6 +513,47 @@ for (const basePath of ['/', '/qrtoss/'])
       }
     });
 
+    test('camera survives a rapid visibility cycle before scanning', async ({ browser }) => {
+      const text = 'QR after camera restart';
+      const { s, rc, sc, failures } = await pages(browser, text);
+      try {
+        await expect
+          .poll(() =>
+            s
+              .locator('#video')
+              .evaluate(
+                (video: HTMLVideoElement) =>
+                  !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+              ),
+          )
+          .toBe(true);
+        await s.evaluate(() => {
+          for (const state of ['hidden', 'visible']) {
+            Object.defineProperty(document, 'visibilityState', {
+              configurable: true,
+              value: state,
+            });
+            Object.defineProperty(document, 'hidden', {
+              configurable: true,
+              value: state === 'hidden',
+            });
+            document.dispatchEvent(new Event('visibilitychange'));
+          }
+          Reflect.deleteProperty(document, 'visibilityState');
+          Reflect.deleteProperty(document, 'hidden');
+        });
+        // Playback must keep advancing after the previous scanner's delayed cleanup.
+        await expect
+          .poll(() => s.locator('#video').evaluate((video: HTMLVideoElement) => video.currentTime))
+          .toBeGreaterThan(0.5);
+        await scanQR(s, text);
+        expect(failures).toEqual([]);
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
     test('sender preview has only content, four actions and shared marketing', async ({
       browser,
     }) => {
