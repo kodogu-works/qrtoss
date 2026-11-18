@@ -31,7 +31,7 @@ func TestOptions(t *testing.T) {
 		}
 	}
 	o, e := Parse([]string{"--server", "HTTPS://QRTOSS.Example:443/"}, env)
-	if e != nil || o.Server != "https://qrtoss.example" || o.Lang != "ja" {
+	if e != nil || o.Server != "https://qrtoss.example" || o.Lang != "en" {
 		t.Fatalf("normalization: %+v %v", o, e)
 	}
 	for _, locale := range []string{"_", ".", "@", "C", "fr_FR", ""} {
@@ -358,5 +358,50 @@ func TestEnvelopeFieldCase(t *testing.T) {
 		if _, err := c.Decrypt(raw); err != nil {
 			t.Fatalf("valid envelope rejected after invalid input: %v", err)
 		}
+	}
+}
+
+func TestEnglishOnlyPresentation(t *testing.T) {
+	env := environment(map[string]string{"LANG": "ja_JP.UTF-8", "QRTOSS_LANG": "es"})
+	for _, args := range [][]string{nil, {"--lang", "ja"}, {"--lang", "es"}, {"--help"}} {
+		options, err := Parse(args, env)
+		if err != nil || options.Lang != "en" {
+			t.Fatalf("%v: %+v %v", args, options, err)
+		}
+	}
+	if help("ja") != help("en") || !strings.Contains(help("es"), "All CLI messages are in English") {
+		t.Fatal("help is not English")
+	}
+	var out bytes.Buffer
+	terminal := &terminal{out: &out, options: Options{Lang: "ja"}}
+	for _, event := range []string{"CONNECTED", "PEER_SCANNED", "RECEIVED", "RECONNECTING", "QR_REFRESHED", "DISCONNECTED", "SESSION_EXPIRED"} {
+		if err := terminal.event(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if out.Len() != 0 {
+		t.Fatalf("routine output: %q", out.String())
+	}
+	if err := terminal.event("ARGUMENT_ERROR"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Invalid arguments") {
+		t.Fatalf("diagnostic is not English: %q", out.String())
+	}
+}
+
+func TestReadablePairingExpiry(t *testing.T) {
+	fixture := newReceiverFixture(t, io.Discard)
+	fixture.session.pairing().deadline = time.Date(2026, 11, 18, 10, 28, 5, 0, time.FixedZone("CST", -6*60*60))
+	previous := time.Local
+	time.Local = time.FixedZone("CST", -6*60*60)
+	t.Cleanup(func() { time.Local = previous })
+	fixture.session.terminal.options = Options{QR: "off", PairingURL: true, Lang: "es"}
+	if err := fixture.session.showPairing(); err != nil {
+		t.Fatal(err)
+	}
+	expected := "Scan this QR code with your phone’s camera\n[EXPIRES] 2026-11-18 10:28:05 (CST)\nhttps://example.org/send\n"
+	if fixture.diagnostics.String() != expected {
+		t.Fatalf("pairing display: %q", fixture.diagnostics.String())
 	}
 }

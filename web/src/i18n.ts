@@ -1,4 +1,7 @@
 export const en = {
+  senderPrompt: 'Scan the QR code you want to send',
+  sendShort: 'Send',
+  sendDone: 'Sent',
   receiverPrompt: 'Scan this QR code with your phone’s camera',
   receiverConnectedPrompt: 'Scan a QR code with your phone’s camera',
   qrRemaining: '{seconds} seconds',
@@ -92,6 +95,9 @@ export const en = {
 };
 export type Key = keyof typeof en;
 const ja: Record<Key, string> = {
+  senderPrompt: '送信するQRコードを読み取ってください',
+  sendShort: '送信',
+  sendDone: '送信済み',
   receiverPrompt: 'スマホのカメラで、このQRコードを読み取ってください',
   receiverConnectedPrompt: 'スマホのカメラで、QRコードを読み取ってください',
   qrRemaining: '{seconds} 秒',
@@ -184,6 +190,9 @@ const ja: Record<Key, string> = {
   version: 'バージョン',
 };
 const es: Record<Key, string> = {
+  senderPrompt: 'Escanea el código QR que quieres enviar',
+  sendShort: 'Enviar',
+  sendDone: 'Enviado',
   receiverPrompt: 'Escanea este código QR con la cámara de tu teléfono',
   receiverConnectedPrompt: 'Escanea un código QR con la cámara de tu teléfono',
   qrRemaining: '{seconds} segundos',

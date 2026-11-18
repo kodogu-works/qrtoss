@@ -150,26 +150,6 @@ func Origin(s string) (string, error) {
 	}
 	return "https://" + strings.ToLower(host), nil
 }
-func language(s string, env Env) string {
-	if s != "auto" {
-		return s
-	}
-	for _, key := range []string{"QRTOSS_LANG", "LC_ALL", "LC_MESSAGES", "LANG"} {
-		v := env(key)
-		if v == "" || v == "auto" {
-			continue
-		}
-		parts := strings.FieldsFunc(v, func(r rune) bool { return r == '_' || r == '-' || r == '.' || r == '@' })
-		if len(parts) == 0 {
-			return "en"
-		}
-		v = strings.ToLower(parts[0])
-		if oneOf(v, "ja", "en", "es") {
-			return v
-		}
-		if key != "QRTOSS_LANG" {
-			return "en"
-		}
-	}
-	return "en"
-}
+
+// Legacy --lang values remain accepted, but CLI presentation is always English.
+func language(_ string, _ Env) string { return "en" }

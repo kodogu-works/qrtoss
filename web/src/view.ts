@@ -65,9 +65,16 @@ function footer(): string {
 </footer>`;
 }
 
+function marketing(): string {
+  const features = ['Camera', 'Scan', 'Browser', 'Devices', 'Secure', 'Storage', 'Open'];
+  return `<section class="marketing" aria-labelledby="marketing-title">
+<div class="marketing-intro"><h2 id="marketing-title" data-i18n="marketingTitle"></h2><p data-i18n="marketingTagline"></p></div>
+<div class="feature-grid">${features.map((feature) => `<article><h3 data-i18n="feature${feature}Title"></h3><p data-i18n="feature${feature}Body"></p></article>`).join('')}</div>
+</section>`;
+}
+
 export function mountPage(sender: boolean, paths: AppPaths): void {
   const root = document.querySelector<HTMLDivElement>('#app')!;
-  const features = ['Camera', 'Scan', 'Browser', 'Devices', 'Secure', 'Storage', 'Open'];
   const receiver = `
 <main class="receiver-main">
 <section class="pairing-stage" aria-labelledby="qr-help">
@@ -92,75 +99,38 @@ export function mountPage(sender: boolean, paths: AppPaths): void {
 <button id="clear" class="text-button" data-i18n="clear" hidden></button>
 </div>
 </section>
-<section class="marketing" aria-labelledby="marketing-title">
-<div class="marketing-intro"><h2 id="marketing-title" data-i18n="marketingTitle"></h2><p data-i18n="marketingTagline"></p></div>
-<div class="feature-grid">${features.map((feature) => `<article><h3 data-i18n="feature${feature}Title"></h3><p data-i18n="feature${feature}Body"></p></article>`).join('')}</div>
-</section>
+${marketing()}
 </main>`;
   const senderPage = `
 <main class="sender-main">
-<h1 data-i18n="sendTitle"></h1>
-<div class="workspace"><section class="card primary-card" aria-labelledby="connection-heading">
-<div class="card-heading"><h2 id="connection-heading" data-i18n="preview"></h2><p id="copy-feedback" role="status" class="copy-feedback"></p></div>
-<div class="connection-status" role="status" aria-live="polite" aria-atomic="true"><span id="status-icon" class="status-icon" aria-hidden="true">${icon('clock')}</span><span id="status"></span></div>
-<p id="peer-mode" class="peer-mode" hidden></p>
+<section class="sender-stage" aria-labelledby="sender-instruction">
+<h1 id="sender-instruction" data-i18n="senderPrompt"></h1>
 <p id="error" class="notice error" role="alert" hidden></p>
 <div id="camera" class="camera" hidden>
-<video id="video" muted autoplay playsinline>
-</video>
-<p class="camera-instruction" data-i18n="scanInstruction"></p>
-<div class="camera-reticle" aria-hidden="true"><i></i><i></i><i></i><i></i>
-</div>
+<video id="video" muted autoplay playsinline></video>
+<div class="camera-reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 </div>
 <div id="zoom-control" class="zoom-control" hidden>
 <label for="zoom" data-i18n="zoom"></label>
 <input id="zoom" type="range" min="1" max="1" step="0.1" value="1">
 <output id="zoom-value" for="zoom"></output>
 </div>
-<div class="actions camera-actions">
-<button id="camera-retry" class="button secondary" data-i18n="cameraRetry" hidden></button>
-<button id="photo" class="button secondary" data-i18n="photo"></button>
 <input id="photo-input" type="file" accept="image/*" hidden>
-</div>
 <p id="photo-error" class="notice" role="alert" hidden></p>
 <div id="sender-preview" class="preview" hidden>
-<p id="domain" class="domain">
-</p>
-<pre id="sender-text" dir="auto" tabindex="0" data-i18n-aria-label="preview">
-</pre>
+<pre id="sender-text" dir="auto" tabindex="0" data-i18n-aria-label="preview"></pre>
 </div>
-<div class="actions">
-<button id="scan" class="button accent" data-i18n="scanAgain" hidden>
-</button>
-
-<button id="send" class="button accent" data-i18n="send" hidden>
-</button>
-<button id="retry" class="button secondary" data-i18n="retry" hidden>
-</button>
-<button id="copy" class="button secondary" hidden>
-${icon('copy')}<span data-i18n="copy"></span>
-</button>
+<p id="copy-feedback" role="status" class="copy-feedback"></p>
+<div class="actions sender-actions">
+<button id="send" class="button accent" data-i18n="sendShort" hidden></button>
+<button id="scan" class="button secondary" data-i18n="scanAgain" hidden></button>
+<button id="photo" class="button secondary" data-i18n="photo"></button>
+<button id="copy" class="button secondary" hidden>${icon('copy')}<span data-i18n="copy"></span></button>
+<button id="camera-retry" class="button secondary" data-i18n="cameraRetry" hidden></button>
+<button id="retry" class="button secondary" data-i18n="retry" hidden></button>
 </div>
-<p id="cli-done" class="hint" data-i18n="cliDone" hidden>
-</p>
-</section></div>
-<ul class="trust-row">
-<li>
-${icon('lock')}
-<span data-i18n="private">
-</span>
-</li>
-<li>
-${icon('user')}
-<span data-i18n="noAccount">
-</span>
-</li>
-<li>
-${icon('clock')}
-<span data-i18n="noHistory">
-</span>
-</li>
-</ul>
+</section>
+${marketing()}
 </main>`;
   root.innerHTML = `<div class="shell">${header(paths)}${sender ? senderPage : receiver}${footer()}</div>`;
 }

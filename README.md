@@ -5,6 +5,7 @@
 
 [日本語](README.ja.md) · [Español](README.es.md)
 
+[![CI](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml/badge.svg)](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-26%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
@@ -13,7 +14,7 @@
 
 Send a QR code's contents from your phone to another browser or a terminal. Connect by scanning a temporary QR code, scan the code you want to transfer, review it, and send. No account, installed phone app, or shared Wi-Fi is needed.
 
-The receiver can display the original text or open HTTP(S) URLs in the same tab. The Go CLI writes **one received item to stdout, then exits**. Connection QR codes and diagnostics go to stderr. The interface supports English, Japanese, and Spanish.
+The receiver can display the original text or open HTTP(S) URLs in the same tab. The Go CLI writes **one received item to stdout, then exits**. Connection QR codes, expiry times, and diagnostics go to stderr; routine connection and receipt logs are suppressed. The web interface supports English, Japanese, and Spanish; CLI messages are in English.
 
 ## Run locally
 

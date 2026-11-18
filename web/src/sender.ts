@@ -1,6 +1,5 @@
 import { C, encodeText, randomToken, type AppMessage } from '../../packages/protocol/src/index';
 import { Scanner } from './scanner';
-import { classify } from './content';
 import { translate, type Key, type Language } from './i18n';
 import { Session, type Mode, type Phase } from './session';
 import type { AppPaths } from './paths';
@@ -44,16 +43,11 @@ export function startSender(paths: AppPaths, fragment: string): void {
   const scanner = new Scanner(el<HTMLVideoElement>('video'), scanned);
   function render(): void {
     renderChrome(language, status, phase, errorCode, hasPreview, copied, manualCopy);
-    const modeText: Record<Mode, Key> = {
-      auto_open: 'peerAuto',
-      display_only: 'peerDisplay',
-      stdout: 'peerStdout',
-    };
-    el('peer-mode').hidden = !peerMode;
-    el('peer-mode').textContent = peerMode ? text(modeText[peerMode]) : '';
     const busy = !!pending && !pending.settled;
     const cliDone = peerMode === 'stdout' && !!pending?.settled;
-    el('cli-done').hidden = !cliDone;
+    const reading = status === 'scanning' || photoReading;
+    const showPreview = hasPreview && !reading;
+    el('sender-instruction').hidden = showPreview;
     el<HTMLButtonElement>('scan').disabled =
       phase !== 'connected' ||
       busy ||
@@ -71,13 +65,18 @@ export function startSender(paths: AppPaths, fragment: string): void {
     el('photo-error').textContent = photoError ? text('photoError') : '';
     el('zoom-control').hidden = status !== 'scanning' || !scanner.zoom();
     el('camera').hidden = status !== 'scanning';
-    el('sender-preview').hidden = !hasPreview;
+    el('sender-preview').hidden = !showPreview;
+    el('copy').hidden = !showPreview;
     if (el('sender-text').textContent !== preview) el('sender-text').textContent = preview;
-    const category = classify(preview);
-    el('domain').textContent = category.host ?? '';
-    el('domain').hidden = !category.host;
-    el('send').hidden = !hasPreview || !!pending || status === 'scanning' || photoReading;
-    el<HTMLButtonElement>('send').disabled = phase !== 'connected' || !hasPreview || !!pending;
+    el('send').hidden = !showPreview;
+    el('send').textContent = text(
+      pending?.settled && !errorCode
+        ? 'sendDone'
+        : pending && !pending.settled
+          ? 'sending'
+          : 'sendShort',
+    );
+    el<HTMLButtonElement>('send').disabled = phase !== 'connected' || !showPreview || !!pending;
     el('retry').hidden = !pending?.timedOut || !!pending.settled || phase !== 'connected';
   }
   function attach(): Session {

@@ -5,6 +5,7 @@
 
 [English](README.md) · [Español](README.es.md)
 
+[![CI](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml/badge.svg)](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-26%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
@@ -13,7 +14,7 @@
 
 スマホで読み取ったQRコードの内容を、別の端末のブラウザやターミナルへ転送します。一時的な接続用QRコードをスマホの標準カメラで読み、送信ページで対象QRを読み取って内容を確認し、送信します。アカウント、スマホへのアプリ導入、同じWi-Fiへの接続は不要です。
 
-ブラウザの受信側は原文を表示するか、HTTP(S) URLを同じタブで開きます。Go製CLIは**1件だけ受信して標準出力へ書き出し、終了**します。接続用QRコードと状態表示は標準エラー出力へ分離します。画面・CLIは日本語・英語・スペイン語に対応します。
+ブラウザの受信側は原文を表示するか、HTTP(S) URLを同じタブで開きます。Go製CLIは**1件だけ受信して標準出力へ書き出し、終了**します。接続用QRコード・有効期限・エラーは標準エラー出力へ分離し、通常の接続・受領ログは表示しません。Web画面は日本語・英語・スペイン語に対応し、CLIの表示は英語です。
 
 ## ローカルで起動
 

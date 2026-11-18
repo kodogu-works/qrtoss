@@ -373,7 +373,7 @@ test('TS sender → real Go receiver: HTTPS, mutual proof, one text output, ACK 
     await session.sender.app({ type: 'ack_seen', id });
     assert.equal(await session.exited, 0);
     assert.equal(session.output(), text + '\n');
-    assert.match(session.diagnostics(), /\[RECEIVED\]/);
+    assert.doesNotMatch(session.diagnostics(), /\[(?:CONNECTED|PEER_SCANNED|RECEIVED)\]/);
     assert.doesNotMatch(session.diagnostics(), /ACK_UNCONFIRMED/);
   } finally {
     await session.close();
@@ -478,7 +478,14 @@ for (const scenario of ['commit', 'lateProof'] as const) {
       assert.equal(await session.exited, 0);
       assert.equal(session.output(), 'deadline boundary\n');
       assert.doesNotMatch(session.diagnostics(), /PROTOCOL_ERROR/);
-      if (scenario === 'lateProof') assert.match(session.diagnostics(), /QR_REFRESHED/);
+      if (scenario === 'lateProof') {
+        assert.equal(
+          (session.diagnostics().match(/^Scan this QR code with your phone’s camera$/gm) ?? [])
+            .length,
+          2,
+        );
+        assert.doesNotMatch(session.diagnostics(), /QR_REFRESHED|CONNECTED|RECEIVED/);
+      }
     } finally {
       await session.close();
     }
@@ -504,7 +511,7 @@ for (const scenario of ['ready', 'idle'] as const) {
   });
 }
 
-test('real Go receiver: server idle expiry reports SESSION_EXPIRED and renews the QR', {
+test('real Go receiver: server idle expiry silently renews the QR and pairing instructions', {
   timeout: 30000,
 }, async () => {
   const session = await start('text', 0, 'idle');
@@ -512,8 +519,12 @@ test('real Go receiver: server idle expiry reports SESSION_EXPIRED and renews th
     const renewed = pairingUrl(session.child);
     session.expireIdle();
     await renewed;
-    assert.match(session.diagnostics(), /\[SESSION_EXPIRED\]/);
-    assert.match(session.diagnostics(), /\[QR_REFRESHED\]/);
+    assert.equal(
+      (session.diagnostics().match(/^Scan this QR code with your phone’s camera$/gm) ?? []).length,
+      2,
+    );
+    assert.equal((session.diagnostics().match(/^\[EXPIRES\] /gm) ?? []).length, 2);
+    assert.doesNotMatch(session.diagnostics(), /SESSION_EXPIRED|QR_REFRESHED/);
     assert.doesNotMatch(session.diagnostics(), /\[DISCONNECTED\]|PROTOCOL_ERROR/);
     assert.equal(session.output(), '');
     assert.equal(session.child.exitCode, null);

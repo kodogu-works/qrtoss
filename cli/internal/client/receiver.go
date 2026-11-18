@@ -253,7 +253,7 @@ func (s *receiver) showPairing() error {
 	if err := s.terminal.event("WAITING"); err != nil {
 		return fail(5, "IO_ERROR")
 	}
-	if _, err := fmt.Fprintf(s.terminal.out, "[EXPIRES] %s\n", pairing.deadline.Format(time.RFC3339)); err != nil {
+	if _, err := fmt.Fprintf(s.terminal.out, "[EXPIRES] %s\n", pairing.deadline.Local().Format("2006-01-02 15:04:05 (MST)")); err != nil {
 		return fail(5, "IO_ERROR")
 	}
 	return s.displayPairing(pairing.url)

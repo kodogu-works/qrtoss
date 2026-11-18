@@ -484,7 +484,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('#scan')).toBeHidden();
         await expect(s.locator('#camera-retry')).toBeHidden();
         await expect(s.locator('#zoom-control')).toBeHidden();
-        await expect(s.locator('.camera-instruction')).toHaveText(
+        await expect(s.locator('#sender-instruction')).toHaveText(
           'Scan the QR code you want to send',
         );
         await expect(r.locator('#expiry')).toHaveText('0 seconds');
@@ -507,6 +507,51 @@ for (const basePath of ['/', '/qrtoss/'])
         await s.goto(base);
         expect(await s.evaluate(() => document.querySelector('video'))).toBeNull();
         await expect(r.locator('#expiry')).toHaveText('0 seconds');
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
+    test('sender preview has only content, four actions and shared marketing', async ({
+      browser,
+    }) => {
+      const text = 'https://example.org/review';
+      const { r, s, rc, sc } = await pages(browser, text);
+      try {
+        await expect(s.locator('#status, #peer-mode, #domain, #cli-done')).toHaveCount(0);
+        await expect(s.locator('.feature-grid article')).toHaveCount(7);
+        await expect(s.locator('#sender-instruction')).toBeVisible();
+        await scanQR(s, text);
+        await expect(s.locator('#sender-instruction')).toBeHidden();
+        for (const viewport of [
+          { width: 1280, height: 720 },
+          { width: 390, height: 844 },
+          { width: 375, height: 667 },
+        ]) {
+          await s.setViewportSize(viewport);
+          for (const language of ['ja', 'en', 'es'] as const) {
+            await s.locator('#language').selectOption(language);
+            await expect(s.locator('#send')).toHaveText(translate(language, 'sendShort'));
+            for (const id of ['send', 'scan', 'photo', 'copy'])
+              await expect(s.locator('#' + id)).toBeVisible();
+            expect(
+              await s.evaluate(() => document.documentElement.scrollWidth),
+            ).toBeLessThanOrEqual(viewport.width);
+            await s.screenshot({
+              path: test.info().outputPath(`sender-preview-${language}-${viewport.width}.png`),
+              fullPage: true,
+            });
+          }
+        }
+        await expect(r.locator('#receiver-result')).toBeHidden();
+        await s.evaluate(() => {
+          (window as unknown as { cameraReady: boolean }).cameraReady = false;
+        });
+        await s.locator('#scan').click();
+        await expect(s.locator('#camera')).toBeVisible();
+        await expect(s.locator('#sender-preview')).toBeHidden();
+        await expect(s.locator('#send')).toBeHidden();
       } finally {
         await rc.close();
         await sc.close();
@@ -613,7 +658,8 @@ for (const basePath of ['/', '/qrtoss/'])
         ).toBe(true);
         await expect(r.locator('#receiver-text')).toHaveText('');
         await s.locator('#send').click();
-        await expect(s.locator('#status')).toHaveText('Received by the other device');
+        await expect(s.locator('#send')).toHaveText('Sent');
+        await expect(s.locator('#send')).toBeDisabled();
         await expect(r.locator('#receiver-text')).toHaveText(text);
         await expect(r).toHaveURL(base);
         await expect(r.locator('#open')).toBeHidden();
@@ -657,7 +703,8 @@ for (const basePath of ['/', '/qrtoss/'])
         await scanQR(s, text);
         await s.locator('#send').click();
         await expect(r).toHaveURL(text);
-        await expect(s.locator('#status')).toHaveText('Received by the other device');
+        await expect(s.locator('#send')).toHaveText('Sent');
+        await expect(s.locator('#send')).toBeDisabled();
         expect(failures).toEqual([]);
         expect(cspViolations).toEqual([]);
       } finally {
@@ -805,9 +852,8 @@ for (const basePath of ['/', '/qrtoss/'])
         expect(controls).not.toContain('room.close');
         release();
         await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-        await expect(s.locator('#status')).toHaveText(
-          /Connected securely|Point the camera at a QR code/,
-        );
+        await expect(s.locator('#sender-instruction')).toBeVisible();
+        await expect(s.locator('#status, #peer-mode')).toHaveCount(0);
         expect(fixture.relay.stats().rooms).toBe(1);
       } finally {
         await rc.close();

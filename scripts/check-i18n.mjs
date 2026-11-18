@@ -18,5 +18,5 @@ for (const code of JSON.parse(await readFile('protocol/error-codes.json', 'utf8'
     if (!errors[code]?.[lang]) throw new Error(`Missing error: ${code}/${lang}`);
 }
 console.log(
-  'Web dictionaries and error translations: en, ja, es OK. CLI dictionaries are checked by go test.',
+  'Web dictionaries and error translations: en, ja, es OK. English CLI presentation is checked by go test.',
 );
