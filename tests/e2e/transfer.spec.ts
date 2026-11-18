@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Browser } from '@playwright/test';
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
+import { PNG } from 'pngjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
@@ -8,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Socket } from 'node:net';
 import { createRelay, type RelayOptions } from '../../server/src/index.ts';
+import { translate } from '../../web/src/i18n.ts';
 
 /** Match the production proxy contract: strip the mount from HTTP and WS paths. */
 async function deployment(
@@ -117,11 +119,16 @@ for (const basePath of ['/', '/qrtoss/'])
           stdio: 'pipe',
         },
       );
+    });
+    // Keep each case's room creation bucket and session state independent.
+    test.beforeEach(async () => {
       host = await deployment(basePath, directory);
       base = host.base;
     });
-    test.afterAll(async () => {
+    test.afterEach(async () => {
       await host?.close();
+    });
+    test.afterAll(async () => {
       if (directory) await rm(directory, { recursive: true, force: true });
     });
     async function pairingURL(page: Page) {
@@ -141,7 +148,8 @@ for (const basePath of ['/', '/qrtoss/'])
     }
     async function fakeCamera(page: Page, payload: string) {
       const data = await QRCode.toDataURL(payload, {
-        width: 512,
+        // Render at the displayed size so dense test codes are not resampled.
+        width: 300,
         margin: 4,
         errorCorrectionLevel: 'M',
       });
@@ -261,6 +269,208 @@ for (const basePath of ['/', '/qrtoss/'])
         decoderWorkers: () => decoderWorkers,
       };
     }
+    test('receiver layout fits the design viewports in all languages', async ({ page }) => {
+      await page.goto(base);
+      await pairingURL(page);
+      for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 1280, height: 720 },
+        { width: 1024, height: 768 },
+        { width: 390, height: 844 },
+        { width: 375, height: 667 },
+      ]) {
+        await page.setViewportSize(viewport);
+        for (const language of ['ja', 'en', 'es'] as const) {
+          await test.step(`${language} ${viewport.width}×${viewport.height}`, async () => {
+            await page.locator('#language').selectOption(language);
+            await expect(page.locator('h1')).toHaveText(translate(language, 'receive'));
+            await expect(page.locator('#qr')).toHaveAccessibleName(
+              translate(language, 'connectionQR'),
+            );
+            await expect(page.locator('#expiry')).toContainText(
+              translate(language, 'expires', { seconds: '' }).split(' ')[0]!,
+            );
+            const layout = await page.evaluate(() => {
+              const bounds = (selector: string) => {
+                const rect = document.querySelector(selector)!.getBoundingClientRect();
+                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+              };
+              return {
+                width: document.documentElement.scrollWidth,
+                height: document.documentElement.scrollHeight,
+                header: bounds('.topbar'),
+                title: bounds('h1'),
+                primary: bounds('.primary-card'),
+                mode: bounds('.mode-card'),
+                qr: bounds('#qr'),
+                controls: Array.from(
+                  document.querySelectorAll('#new-qr, #language, .github-link, .mode-choice'),
+                  (node) => {
+                    const rect = node.getBoundingClientRect();
+                    return { width: rect.width, height: rect.height };
+                  },
+                ),
+                fontSizes: Array.from(
+                  document.querySelectorAll(
+                    'h1, h2, #status, #expiry, .qr-help, .secret-hint, .mode-choice strong, .mode-choice small, #empty, button, select, footer',
+                  ),
+                  (node) => Number.parseFloat(getComputedStyle(node).fontSize),
+                ),
+              };
+            });
+            expect(layout.width).toBeLessThanOrEqual(viewport.width);
+            expect(layout.header.height).toBeGreaterThanOrEqual(56);
+            expect(layout.header.height).toBeLessThanOrEqual(64);
+            expect(layout.title.x).toBe(layout.primary.x);
+            expect(layout.qr.width).toBeGreaterThanOrEqual(180);
+            expect(layout.qr.width).toBeLessThanOrEqual(260);
+            expect(layout.qr.height).toBeCloseTo(layout.qr.width);
+            expect(Math.min(...layout.fontSizes)).toBeGreaterThanOrEqual(14);
+            for (const control of layout.controls) {
+              expect(control.width).toBeGreaterThanOrEqual(44);
+              expect(control.height).toBeGreaterThanOrEqual(44);
+            }
+            if (viewport.width >= 1024) {
+              expect(layout.height).toBeLessThanOrEqual(viewport.height);
+              expect(layout.primary.y).toBe(layout.mode.y);
+              expect(layout.mode.x).toBeGreaterThan(layout.primary.x);
+            } else {
+              expect(layout.mode.x).toBe(layout.primary.x);
+              expect(layout.mode.y).toBeGreaterThan(layout.primary.y + layout.primary.height);
+            }
+            // Decode the displayed pixels, including CSS scaling and the QR quiet zone.
+            const image = PNG.sync.read(await page.locator('#qr').screenshot());
+            const decoded = jsQR(new Uint8ClampedArray(image.data), image.width, image.height);
+            expect(decoded).toBeTruthy();
+            expect(new URL(decoded!.data).pathname).toBe(basePath + 'send');
+            await page.screenshot({
+              path: test.info().outputPath(`receiver-${language}-${viewport.width}.png`),
+              fullPage: true,
+            });
+          });
+        }
+      }
+    });
+
+    test('mode cards, keyboard focus, QR refresh and GitHub link are usable', async ({ page }) => {
+      await page.goto(base);
+      const original = await pairingURL(page);
+      const auto = page.locator('input[value="auto_open"]');
+      const display = page.locator('input[value="display_only"]');
+      await page
+        .locator('.mode-choice')
+        .nth(1)
+        .click({ position: { x: 5, y: 5 } });
+      await expect(display).toBeChecked();
+      await display.focus();
+      await page.keyboard.press('ArrowUp');
+      await expect(auto).toBeChecked();
+      await expect(auto).toBeFocused();
+      await expect(page.locator('.mode-choice').first()).toHaveCSS('outline-style', 'solid');
+      await page.keyboard.press('ArrowDown');
+      await expect(display).toBeChecked();
+      await page.locator('#new-qr').click();
+      expect(await pairingURL(page)).not.toBe(original);
+      await expect(display).toBeChecked();
+      await expect(page.locator('.connection-status')).toHaveAttribute('role', 'status');
+      await page.locator('#language').selectOption('ja');
+      const github = page.getByRole('link', { name: translate('ja', 'githubLabel') });
+      await expect(github).toHaveAttribute('href', 'https://github.com/kodogu-works/qrtoss');
+      await expect(github).toHaveAttribute('target', '_blank');
+      await expect(github).toHaveAttribute('rel', 'noopener noreferrer');
+      await page
+        .context()
+        .route('https://github.com/kodogu-works/qrtoss', (route) =>
+          route.fulfill({ body: 'qrtoss source', contentType: 'text/plain' }),
+        );
+      const opened = page.waitForEvent('popup');
+      await github.click();
+      const popup = await opened;
+      await expect(popup).toHaveURL('https://github.com/kodogu-works/qrtoss');
+      expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+      await popup.close();
+    });
+
+    test('long received content wraps, scrolls, copies and clears', async ({ browser }) => {
+      const text = 'https://example.org/' + '0123456789'.repeat(65);
+      const { r, s, rc, sc, failures } = await pages(browser, text);
+      try {
+        await r.locator('.mode-choice').nth(1).click();
+        await scanQR(s, text);
+        await s.locator('#send').click();
+        await expect(r.locator('#receiver-text')).toHaveText(text);
+        await expect(r.locator('#open')).toBeEnabled();
+        for (const viewport of [
+          { width: 1440, height: 900 },
+          { width: 1280, height: 720 },
+          { width: 1024, height: 768 },
+          { width: 390, height: 844 },
+          { width: 375, height: 667 },
+        ]) {
+          await r.setViewportSize(viewport);
+          for (const language of ['ja', 'en', 'es']) {
+            await r.locator('#language').selectOption(language);
+            await r.screenshot({
+              path: test.info().outputPath(`received-${language}-${viewport.width}.png`),
+              fullPage: true,
+            });
+            const content = await r.locator('#receiver-text').evaluate((node) => ({
+              width: node.scrollWidth,
+              visibleWidth: node.clientWidth,
+              height: node.scrollHeight,
+              visibleHeight: node.clientHeight,
+              pageWidth: document.documentElement.scrollWidth,
+              pageHeight: document.documentElement.scrollHeight,
+              regions: Array.from(
+                document.querySelectorAll(
+                  'main, .primary-card, .mode-card, .result-card, .actions, footer',
+                ),
+                (region) => ({
+                  name: region.className || region.tagName,
+                  height: region.getBoundingClientRect().height,
+                }),
+              ),
+            }));
+            expect(content.width).toBeLessThanOrEqual(content.visibleWidth);
+            expect(content.height).toBeGreaterThan(content.visibleHeight);
+            expect(content.pageWidth).toBeLessThanOrEqual(viewport.width);
+            if (viewport.width >= 1024)
+              expect(
+                content.pageHeight,
+                JSON.stringify({ language, viewport, content }),
+              ).toBeLessThanOrEqual(viewport.height);
+          }
+        }
+        await r.evaluate(() => {
+          Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: {
+              writeText: async (value: string) => {
+                (window as unknown as { copiedText: string }).copiedText = value;
+              },
+            },
+          });
+        });
+        await r.locator('#copy').click();
+        expect(
+          await r.evaluate(() => (window as unknown as { copiedText: string }).copiedText),
+        ).toBe(text);
+        await expect(r.locator('#copy-feedback')).toHaveText(translate('es', 'copied'));
+        await r.setViewportSize({ width: 1280, height: 720 });
+        expect(await r.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+          720,
+        );
+        await r.locator('#clear').click();
+        await expect(r.locator('#empty')).toBeVisible();
+        await expect(r.locator('#receiver-preview')).toBeHidden();
+        await expect(r.locator('#copy')).toBeHidden();
+        expect(failures).toEqual([]);
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
     test('receiver shows scanning and resets after the sender stops', async ({ browser }) => {
       const { r, s, rc, sc } = await pages(browser, 'scan fixture');
       try {
