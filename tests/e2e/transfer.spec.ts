@@ -146,7 +146,7 @@ for (const basePath of ['/', '/qrtoss/'])
       expect(qr).toBeTruthy();
       return qr!.data;
     }
-    async function fakeCamera(page: Page, payload: string) {
+    async function fakeCamera(page: Page, payload: string, zoom = false) {
       const data = await QRCode.toDataURL(payload, {
         // Render at the displayed size so dense test codes are not resampled.
         width: 300,
@@ -154,14 +154,18 @@ for (const basePath of ['/', '/qrtoss/'])
         errorCorrectionLevel: 'M',
       });
       await page.addInitScript(
-        ({ data }) => {
+        ({ data, zoom }) => {
           // Exercise the decoder Worker, including its lazy-loaded production chunk.
           Object.defineProperty(window, 'BarcodeDetector', {
             value: { getSupportedFormats: async () => [] },
             configurable: true,
           });
-          const fixture = window as unknown as { qrCameraTracks: MediaStreamTrack[] };
+          const fixture = window as unknown as {
+            qrCameraTracks: MediaStreamTrack[];
+            cameraReady: boolean;
+          };
           fixture.qrCameraTracks = [];
+          fixture.cameraReady = false;
           // WebKit can collect and recreate the mediaDevices wrapper, losing own properties.
           // Keep the camera override on the prototype so it survives garbage collection.
           Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
@@ -176,7 +180,7 @@ for (const basePath of ['/', '/qrtoss/'])
                 const ctx = c.getContext('2d')!;
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, 512, 512);
-                ctx.drawImage(img, 106, 106, 300, 300);
+                if (fixture.cameraReady) ctx.drawImage(img, 106, 106, 300, 300);
               };
               draw();
               const stream = c.captureStream(15),
@@ -185,6 +189,20 @@ for (const basePath of ['/', '/qrtoss/'])
                     clearInterval(timer);
                   else draw();
                 }, 66);
+              if (zoom) {
+                for (const track of stream.getVideoTracks()) {
+                  let value = 1;
+                  Object.defineProperties(track, {
+                    getCapabilities: { value: () => ({ zoom: { min: 1, max: 4, step: 0.5 } }) },
+                    getSettings: { value: () => ({ zoom: value }) },
+                    applyConstraints: {
+                      value: async (constraints: { advanced: { zoom: number }[] }) => {
+                        value = constraints.advanced[0].zoom;
+                      },
+                    },
+                  });
+                }
+              }
               fixture.qrCameraTracks.push(...stream.getTracks());
               for (const track of stream.getTracks())
                 track.addEventListener('ended', () => clearInterval(timer));
@@ -192,7 +210,7 @@ for (const basePath of ['/', '/qrtoss/'])
             },
           });
         },
-        { data },
+        { data, zoom },
       );
     }
     async function scanQR(page: Page, text: string) {
@@ -201,10 +219,12 @@ for (const basePath of ['/', '/qrtoss/'])
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
       // Exercise the camera fixture after WebKit has had a chance to collect DOM wrappers.
       await page.requestGC();
-      await page.locator('#scan').click();
+      await page.evaluate(() => {
+        (window as unknown as { cameraReady: boolean }).cameraReady = true;
+      });
       await expect(page.locator('#sender-text')).toHaveText(text);
     }
-    async function pages(browser: Browser, payload: string) {
+    async function pages(browser: Browser, payload: string, zoom = false) {
       const rc = await browser.newContext({ locale: 'en-US' }),
         sc = await browser.newContext({ locale: 'en-US' });
       const r = await rc.newPage(),
@@ -248,14 +268,14 @@ for (const basePath of ['/', '/qrtoss/'])
       }
       r.on('pageerror', (e) => failures.push(e.message));
       s.on('pageerror', (e) => failures.push(e.message));
-      await fakeCamera(s, payload);
+      await fakeCamera(s, payload, zoom);
       await r.goto(base);
       const url = await pairingURL(r);
       expect(new URL(url).origin + new URL(url).pathname).toBe(base + 'send');
       await s.goto(url);
       await expect(s).toHaveURL(base + 'send');
-      await expect(s.locator('#status')).toHaveText('Connected securely');
-      await expect(r.locator('#status')).toHaveText('Connected securely');
+      await expect(s.locator('#camera')).toBeVisible();
+      await expect(r.locator('#status')).toHaveText('The sender is scanning a QR code.');
       return {
         r,
         s,
@@ -471,25 +491,125 @@ for (const basePath of ['/', '/qrtoss/'])
       }
     });
 
-    test('receiver shows scanning and resets after the sender stops', async ({ browser }) => {
+    test('camera starts automatically and stops when the sender leaves', async ({ browser }) => {
       const { r, s, rc, sc } = await pages(browser, 'scan fixture');
       try {
-        // Keep the camera starting until Stop is clicked, without decoding a QR.
-        await s.evaluate(() => {
-          Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
-            configurable: true,
-            value: () => new Promise(() => {}),
-          });
-        });
-        await s.locator('#scan').click();
+        await expect(s.locator('#scan')).toBeHidden();
+        await expect(s.locator('#camera-retry')).toBeHidden();
+        await expect(s.locator('#zoom-control')).toBeHidden();
+        await expect(s.locator('.camera-instruction')).toHaveText(
+          'Scan the QR code you want to send',
+        );
         await expect(r.locator('#status')).toHaveText('The sender is scanning a QR code.');
-        await s.locator('#stop').click();
-        await expect(r.locator('#status')).toHaveText('Connected securely');
+        for (const viewport of [
+          { width: 390, height: 844 },
+          { width: 375, height: 667 },
+        ]) {
+          await s.setViewportSize(viewport);
+          await s.locator('#language').selectOption('ja');
+          expect(await s.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            viewport.width,
+          );
+          const photo = await s.locator('#photo').boundingBox();
+          expect(photo!.y + photo!.height).toBeLessThanOrEqual(viewport.height);
+          await s.screenshot({
+            path: test.info().outputPath(`sender-${viewport.width}.png`),
+            fullPage: true,
+          });
+        }
+        await s.goto(base);
+        expect(await s.evaluate(() => document.querySelector('video'))).toBeNull();
+        await expect(r.locator('#status')).toContainText('Disconnected');
       } finally {
         await rc.close();
         await sc.close();
       }
     });
+
+    test('supported zoom remains live while QR detection continues', async ({ browser }) => {
+      const { r, s, rc, sc } = await pages(browser, 'zoom fixture', true);
+      try {
+        await expect(s.locator('#zoom-control')).toBeVisible();
+        await s.locator('#zoom').press('End');
+        await expect(s.locator('#zoom-value')).toHaveText('4.0×');
+        await expect(s.locator('#camera')).toBeVisible();
+        await scanQR(s, 'zoom fixture');
+        await expect(s.locator('#zoom-control')).toBeHidden();
+        await expect(s.locator('#camera')).toBeHidden();
+        await expect(r.locator('#receiver-text')).toHaveText('');
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
+    test('camera failure offers retry and photos are decoded locally before explicit send', async ({
+      browser,
+    }) => {
+      const { r, s, rc, sc, requestPaths, cspViolations, failures } = await pages(
+        browser,
+        'unused',
+      );
+      try {
+        await r.locator('input[value="display_only"]').check();
+        await s.evaluate(() => {
+          Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
+            configurable: true,
+            value: async () => {
+              throw new DOMException('denied', 'NotAllowedError');
+            },
+          });
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        // A visibility cycle releases the active stream, then exercises a denied restart.
+        await s.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', {
+            configurable: true,
+            value: 'hidden',
+          });
+          document.dispatchEvent(new Event('visibilitychange'));
+          Object.defineProperty(document, 'visibilityState', {
+            configurable: true,
+            value: 'visible',
+          });
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect(s.locator('#camera-retry')).toBeVisible();
+        await expect(s.locator('#error')).toContainText('Camera permission was not granted');
+        await s.locator('#camera-retry').click();
+        await expect(s.locator('#camera-retry')).toBeVisible();
+        await s.locator('#photo-input').setInputFiles({
+          name: 'blank.png',
+          mimeType: 'image/png',
+          buffer: PNG.sync.write(new PNG({ width: 64, height: 64 })),
+        });
+        await expect(s.locator('#photo-error')).toBeVisible();
+        const content = 'https://example.org/local-photo';
+        const image = await QRCode.toBuffer(content, { width: 300, margin: 4 });
+        await s
+          .locator('#photo-input')
+          .setInputFiles({ name: 'qr.png', mimeType: 'image/png', buffer: image });
+        await expect(s.locator('#sender-text')).toHaveText(content);
+        await expect(r.locator('#receiver-text')).toHaveText('');
+        await expect(s.locator('#photo-error')).toBeHidden();
+        expect(
+          await s.evaluate(() =>
+            (window as unknown as { qrCameraTracks: MediaStreamTrack[] }).qrCameraTracks.every(
+              (track) => track.readyState === 'ended',
+            ),
+          ),
+        ).toBe(true);
+        await s.locator('#send').click();
+        await expect(r.locator('#receiver-text')).toHaveText(content);
+        expect(requestPaths.every((path) => path.startsWith(basePath))).toBe(true);
+        expect(cspViolations).toEqual([]);
+        expect(failures).toEqual([]);
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
     test('camera QR → explicit confirmation → encrypted transfer to display-only receiver', async ({
       browser,
     }) => {
@@ -645,7 +765,9 @@ for (const basePath of ['/', '/qrtoss/'])
         expect(controls).not.toContain('room.close');
         release();
         await expect(r.locator('#status')).toHaveText('Connected securely');
-        await expect(s.locator('#status')).toHaveText('Connected securely');
+        await expect(s.locator('#status')).toHaveText(
+          /Connected securely|Point the camera at a QR code/,
+        );
         expect(fixture.relay.stats().rooms).toBe(1);
       } finally {
         await rc.close();

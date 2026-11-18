@@ -61,7 +61,7 @@ ${icon('chevron')}
 <main class="${sender ? 'sender-main' : 'receiver-main'}">
 <h1 data-i18n="${sender ? 'sendTitle' : 'receive'}">
 </h1>
-${sender ? '<p class="sender-intro" data-i18n="senderIntro"></p>' : ''}
+
 <div class="workspace">
 <section class="card primary-card" aria-labelledby="connection-heading">
 <div class="card-heading">
@@ -83,14 +83,21 @@ ${
     ? `<div id="camera" class="camera" hidden>
 <video id="video" muted autoplay playsinline>
 </video>
-<div class="camera-reticle" aria-hidden="true">
+<p class="camera-instruction" data-i18n="scanInstruction"></p>
+<div class="camera-reticle" aria-hidden="true"><i></i><i></i><i></i><i></i>
 </div>
 </div>
-<div id="scan-placeholder" class="scan-placeholder">
-${icon('qr')}
-<p data-i18n="cameraHelp">
-</p>
+<div id="zoom-control" class="zoom-control" hidden>
+<label for="zoom" data-i18n="zoom"></label>
+<input id="zoom" type="range" min="1" max="1" step="0.1" value="1">
+<output id="zoom-value" for="zoom"></output>
 </div>
+<div class="actions camera-actions">
+<button id="camera-retry" class="button secondary" data-i18n="cameraRetry" hidden></button>
+<button id="photo" class="button secondary" data-i18n="photo"></button>
+<input id="photo-input" type="file" accept="image/*" hidden>
+</div>
+<p id="photo-error" class="notice" role="alert" hidden></p>
 <div id="sender-preview" class="preview" hidden>
 <p id="domain" class="domain">
 </p>
@@ -98,10 +105,9 @@ ${icon('qr')}
 </pre>
 </div>
 <div class="actions">
-<button id="scan" class="button accent" data-i18n="scan" disabled>
+<button id="scan" class="button accent" data-i18n="scanAgain" hidden>
 </button>
-<button id="stop" class="button secondary" data-i18n="stop" hidden>
-</button>
+
 <button id="send" class="button accent" data-i18n="send" hidden>
 </button>
 <button id="retry" class="button secondary" data-i18n="retry" hidden>

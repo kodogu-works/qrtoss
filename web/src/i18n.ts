@@ -1,6 +1,11 @@
 export const en = {
   receive: 'Receive on this device',
   sendTitle: 'Send from your phone',
+  scanInstruction: 'Scan the QR code you want to send',
+  cameraRetry: 'Retry camera',
+  photo: 'Read from photo',
+  zoom: 'Zoom',
+  photoError: 'No QR code could be read from this image.',
   receiverIntro: 'A small bridge between your phone and this screen.',
   senderIntro: 'Scan it. Check it. Send it to your other device.',
   private: 'End-to-end encrypted',
@@ -58,13 +63,18 @@ export const en = {
   secureContext: 'Open this page over HTTPS to start a secure connection.',
   cancelledAuto:
     'Automatic opening was cancelled while this page was hidden. You can open the content manually.',
-  cameraHelp: 'Camera access starts only when you choose Scan. Nothing is sent until you confirm.',
+  cameraHelp: 'The camera starts automatically. Nothing is sent until you confirm.',
   version: 'Version',
 };
 export type Key = keyof typeof en;
 const ja: Record<Key, string> = {
   receive: 'この端末で受信',
   sendTitle: 'スマホから送信',
+  scanInstruction: '送信したいQRコードをスキャン',
+  cameraRetry: 'カメラを再試行',
+  photo: '写真から読み込む',
+  zoom: 'ズーム',
+  photoError: 'この画像からQRコードを読み取れませんでした。',
   receiverIntro: 'スマホと、この画面をつなぐ小さな橋。',
   senderIntro: '読み取って、確認して、もう一台へ。',
   private: '端末間で暗号化',
@@ -122,12 +132,17 @@ const ja: Record<Key, string> = {
   language: '言語',
   secureContext: '安全な接続を開始するにはHTTPSで開いてください。',
   cancelledAuto: 'ページが非表示になったため自動遷移を取り消しました。内容は手動で開けます。',
-  cameraHelp: '読み取り操作でだけカメラを使用します。確認して送信するまで、内容は転送されません。',
+  cameraHelp: 'カメラは自動で起動します。確認して送信するまで、内容は転送されません。',
   version: 'バージョン',
 };
 const es: Record<Key, string> = {
   receive: 'Recibir en este dispositivo',
   sendTitle: 'Enviar desde el teléfono',
+  scanInstruction: 'Escanea el código QR que quieres enviar',
+  cameraRetry: 'Reintentar cámara',
+  photo: 'Leer desde una foto',
+  zoom: 'Zoom',
+  photoError: 'No se pudo leer un código QR de esta imagen.',
   receiverIntro: 'Un pequeño puente entre tu teléfono y esta pantalla.',
   senderIntro: 'Escanea. Revisa. Envía a tu otro dispositivo.',
   private: 'Cifrado de extremo a extremo',
@@ -186,7 +201,7 @@ const es: Record<Key, string> = {
   secureContext: 'Abre esta página por HTTPS para iniciar una conexión segura.',
   cancelledAuto:
     'Se canceló la apertura automática mientras la página estaba oculta. Puedes abrir el contenido manualmente.',
-  cameraHelp: 'La cámara se activa solo al elegir Escanear. No se envía nada hasta que confirmes.',
+  cameraHelp: 'La cámara se inicia automáticamente. No se envía nada hasta que confirmes.',
   version: 'Versión',
 };
 export const dictionaries = { en, ja, es };

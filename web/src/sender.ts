@@ -24,6 +24,10 @@ export function startSender(paths: AppPaths, fragment: string): void {
   let senderCount = 0;
   const senderResults = new Map<string, 'received' | 'rejected'>();
   let cameraStarting = false;
+  let cameraFailed = false;
+  let photoReading = false;
+  let photoError = false;
+  let scanGeneration = 0;
   let transferTimer: ReturnType<typeof setTimeout> | undefined;
   mountPage(true, paths);
   function text(key: Key): string {
@@ -56,16 +60,23 @@ export function startSender(paths: AppPaths, fragment: string): void {
       cliDone ||
       cameraStarting ||
       senderCount >= C.MAX_TRANSFERS_PER_ROOM;
-    el('scan').textContent = text(hasPreview ? 'scanAgain' : 'scan');
-    el('stop').hidden = status !== 'scanning';
+    el('scan').hidden = !hasPreview || busy || cliDone || status === 'scanning' || photoReading;
+    el('scan').textContent = text('scanAgain');
+    el('camera-retry').hidden = !cameraFailed;
+    el<HTMLButtonElement>('camera-retry').disabled =
+      phase !== 'connected' || cameraStarting || photoReading;
+    el<HTMLButtonElement>('photo').disabled =
+      phase !== 'connected' || busy || cliDone || photoReading;
+    el('photo-error').hidden = !photoError;
+    el('photo-error').textContent = photoError ? text('photoError') : '';
+    el('zoom-control').hidden = status !== 'scanning' || !scanner.zoom();
     el('camera').hidden = status !== 'scanning';
-    el('scan-placeholder').hidden = hasPreview || status === 'scanning';
     el('sender-preview').hidden = !hasPreview;
     if (el('sender-text').textContent !== preview) el('sender-text').textContent = preview;
     const category = classify(preview);
     el('domain').textContent = category.host ?? '';
     el('domain').hidden = !category.host;
-    el('send').hidden = !hasPreview || !!pending;
+    el('send').hidden = !hasPreview || !!pending || status === 'scanning' || photoReading;
     el<HTMLButtonElement>('send').disabled = phase !== 'connected' || !hasPreview || !!pending;
     el('retry').hidden = !pending?.timedOut || !!pending.settled || phase !== 'connected';
   }
@@ -78,12 +89,15 @@ export function startSender(paths: AppPaths, fragment: string): void {
           if (mine !== connectionGeneration) return;
           phase = next;
           if (next === 'disconnected') {
+            scanGeneration++;
             scanner.stop();
             cameraStarting = false;
             if (!['delivered', 'displaying'].includes(status) && !pending?.settled)
               status = 'disconnected';
           } else status = next;
           render();
+          if (next === 'connected' && !hasPreview && document.visibilityState === 'visible')
+            void startScan();
         },
         async message(message) {
           if (mine !== connectionGeneration) return;
@@ -126,6 +140,9 @@ export function startSender(paths: AppPaths, fragment: string): void {
   }
   function scanned(content: string): void {
     cameraStarting = false;
+    cameraFailed = false;
+    photoReading = false;
+    photoError = false;
     try {
       encodeText(content);
       preview = content;
@@ -138,37 +155,63 @@ export function startSender(paths: AppPaths, fragment: string): void {
       state('connected');
       void session?.send({ type: 'status', state: 'ready' }).catch(() => {});
       showError(error instanceof Error ? error.message : 'CONTENT_INVALID');
+      if (document.visibilityState === 'visible') void startScan(true);
     }
   }
-  async function startScan(): Promise<void> {
+  async function startScan(keepError = false): Promise<void> {
     if (
       phase !== 'connected' ||
       cameraStarting ||
+      photoReading ||
+      senderCount >= C.MAX_TRANSFERS_PER_ROOM ||
       (pending && !pending.settled) ||
       (peerMode === 'stdout' && pending?.settled)
     )
       return;
     cameraStarting = true;
+    cameraFailed = false;
+    const attempt = ++scanGeneration;
     const generation = connectionGeneration;
-    errorCode = '';
+    if (!keepError) errorCode = '';
     state('scanning');
     try {
       await session!.send({ type: 'status', state: 'scanning' });
-      await scanner!.start();
-      if (generation !== connectionGeneration) scanner!.stop();
+      if (attempt !== scanGeneration || generation !== connectionGeneration) return;
+      await scanner.start();
+      if (attempt !== scanGeneration || generation !== connectionGeneration) return;
+      const zoom = scanner.zoom();
+      if (zoom) {
+        const input = el<HTMLInputElement>('zoom');
+        input.min = String(zoom.min);
+        input.max = String(zoom.max);
+        input.step = String(zoom.step);
+        input.value = String(zoom.value);
+        el('zoom-value').textContent = `${zoom.value.toFixed(1)}×`;
+      }
     } catch (error) {
-      if (generation === connectionGeneration) {
+      if (generation === connectionGeneration && attempt === scanGeneration) {
+        cameraFailed = true;
         state('connected');
         void session?.send({ type: 'status', state: 'ready' }).catch(() => {});
         showError(error instanceof Error ? error.message : 'CAMERA_ERROR');
       }
     } finally {
-      cameraStarting = false;
-      render();
+      if (attempt === scanGeneration) {
+        cameraStarting = false;
+        render();
+      }
     }
   }
   async function sendContent(retry = false): Promise<void> {
-    if (phase !== 'connected' || !hasPreview || !session) return;
+    if (
+      phase !== 'connected' ||
+      !hasPreview ||
+      !session ||
+      cameraStarting ||
+      photoReading ||
+      status === 'scanning'
+    )
+      return;
     if (retry) {
       if (!pending || pending.settled || !pending.timedOut) return;
     } else {
@@ -237,16 +280,50 @@ export function startSender(paths: AppPaths, fragment: string): void {
     }, 2000);
   });
   el('scan').addEventListener('click', () => void startScan());
-  el('stop').addEventListener('click', () => {
-    scanner?.stop();
+  el('camera-retry').addEventListener('click', () => void startScan());
+  el('photo').addEventListener('click', () => el<HTMLInputElement>('photo-input').click());
+  el('photo-input').addEventListener('change', async () => {
+    const input = el<HTMLInputElement>('photo-input');
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || phase !== 'connected' || (pending && !pending.settled) || photoReading) return;
+    const attempt = ++scanGeneration;
+    photoReading = true;
     cameraStarting = false;
+    photoError = false;
+    scanner.stop();
     state(hasPreview ? 'scanned' : 'connected');
     void session?.send({ type: 'status', state: hasPreview ? 'scanned' : 'ready' }).catch(() => {});
+    try {
+      await scanner.image(file);
+    } catch {
+      if (attempt === scanGeneration) photoError = true;
+    } finally {
+      if (attempt === scanGeneration) {
+        photoReading = false;
+        render();
+        if (!hasPreview && !cameraFailed && document.visibilityState === 'visible')
+          void startScan();
+      }
+    }
+  });
+  el('zoom').addEventListener('input', async () => {
+    const input = el<HTMLInputElement>('zoom');
+    try {
+      await scanner.setZoom(Number(input.value));
+      const zoom = scanner.zoom();
+      if (zoom) el('zoom-value').textContent = `${zoom.value.toFixed(1)}×`;
+    } catch {
+      const zoom = scanner.zoom();
+      if (zoom) input.value = String(zoom.value);
+    }
   });
   el('send').addEventListener('click', () => void sendContent());
   el('retry').addEventListener('click', () => void sendContent(true));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
+      scanGeneration++;
+      photoReading = false;
       scanner.stop();
       cameraStarting = false;
       if (status === 'scanning') {
@@ -255,9 +332,11 @@ export function startSender(paths: AppPaths, fragment: string): void {
           ?.send({ type: 'status', state: hasPreview ? 'scanned' : 'ready' })
           .catch(() => {});
       }
-    }
+    } else if (phase === 'connected' && !hasPreview && !cameraFailed && !photoReading)
+      void startScan();
   });
   addEventListener('pagehide', () => {
+    scanGeneration++;
     connectionGeneration++;
     session?.close();
     scanner.stop();
