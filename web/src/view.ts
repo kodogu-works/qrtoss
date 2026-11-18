@@ -12,7 +12,6 @@ const iconPaths = {
   disconnected: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/>',
   link: '<path d="m9 15 6-6m-5-3 1-1a5 5 0 0 1 7 7l-1 1m-3 5-1 1a5 5 0 0 1-7-7l1-1"/>',
   qr: '<path d="M9 3H3v6h6V3Zm12 0h-6v6h6V3ZM9 15H3v6h6v-6Zm6 0h3v3h3m-6 3h3m3 0v-1"/>',
-  refresh: '<path d="M20 10a8 8 0 0 0-14-3L3 10m0-6v6h6m-5 4a8 8 0 0 0 14 3l3-3m0 6v-6h-6"/>',
   copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
   user: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
@@ -34,11 +33,8 @@ export function loadLanguage(): Language {
   }
   return chooseLanguage(navigator.languages, saved);
 }
-export function mountPage(sender: boolean, paths: AppPaths): void {
-  const root = document.querySelector<HTMLDivElement>('#app')!;
-  root.innerHTML = `
-<div class="shell">
-<header class="topbar">
+function header(paths: AppPaths): string {
+  return `<header class="topbar">
 <a class="wordmark" href="${paths.home}" aria-label="qrtoss">
 <span class="brand-symbol">${icon('arrow')}</span>qrtoss<span class="brand-dot">.</span>
 </a>
@@ -57,30 +53,59 @@ ${icon('github')}<span>GitHub</span>
 ${icon('chevron')}
 </label>
 </div>
-</header>
-<main class="${sender ? 'sender-main' : 'receiver-main'}">
-<h1 data-i18n="${sender ? 'sendTitle' : 'receive'}">
-</h1>
-
-<div class="workspace">
-<section class="card primary-card" aria-labelledby="connection-heading">
-<div class="card-heading">
-<h2 id="connection-heading" data-i18n="${sender ? 'preview' : 'stepOne'}">
-</h2>
-${sender ? '<p id="copy-feedback" role="status" class="copy-feedback"></p>' : ''}
-</div>
-<div class="connection-status" role="status" aria-live="polite" aria-atomic="true">
-<span id="status-icon" class="status-icon" aria-hidden="true">${icon('clock')}</span>
-<span id="status">
+</header>`;
+}
+function footer(): string {
+  return `<footer>
+<span>qrtoss / <span id="version">
 </span>
+</span>
+<span data-i18n="license">
+</span>
+</footer>`;
+}
+
+export function mountPage(sender: boolean, paths: AppPaths): void {
+  const root = document.querySelector<HTMLDivElement>('#app')!;
+  const features = ['Camera', 'Scan', 'Browser', 'Devices', 'Secure', 'Storage', 'Open'];
+  const receiver = `
+<main class="receiver-main">
+<section class="pairing-stage" aria-labelledby="qr-help">
+<h1 id="qr-help" data-i18n="receiverPrompt"></h1>
+<div id="qr-wrap" class="qr-wrap">
+<div class="qr-frame">
+<canvas id="qr" data-i18n-aria-label="connectionQR" aria-describedby="qr-help" role="img"></canvas>
+<div id="qr-loading" class="qr-loading" aria-hidden="true">${icon('qr')}</div>
 </div>
-<p id="peer-mode" class="peer-mode" hidden>
-</p>
-<p id="error" class="notice error" role="alert" hidden>
-</p>
-${
-  sender
-    ? `<div id="camera" class="camera" hidden>
+<p class="expiry"><span data-i18n="qrValidity"></span> <span id="expiry"></span></p>
+</div>
+<p id="error" class="notice error" role="alert" hidden></p>
+</section>
+<section id="receiver-result" class="card result-card" aria-labelledby="result-heading" hidden>
+<div class="card-heading"><h2 id="result-heading" data-i18n="stepThree"></h2>
+<p id="copy-feedback" role="status" class="copy-feedback"></p></div>
+<div id="receiver-preview" class="preview"><pre id="receiver-text" dir="auto" tabindex="0" data-i18n-aria-label="stepThree"></pre></div>
+<p id="cancelled" class="hint" data-i18n="cancelledAuto" hidden></p>
+<div class="actions">
+<button id="open" class="button accent" data-i18n="open" hidden></button>
+<button id="copy" class="button secondary" hidden>${icon('copy')}<span data-i18n="copy"></span></button>
+<button id="clear" class="text-button" data-i18n="clear" hidden></button>
+</div>
+</section>
+<section class="marketing" aria-labelledby="marketing-title">
+<div class="marketing-intro"><h2 id="marketing-title" data-i18n="marketingTitle"></h2><p data-i18n="marketingTagline"></p></div>
+<div class="feature-grid">${features.map((feature) => `<article><h3 data-i18n="feature${feature}Title"></h3><p data-i18n="feature${feature}Body"></p></article>`).join('')}</div>
+</section>
+</main>`;
+  const senderPage = `
+<main class="sender-main">
+<h1 data-i18n="sendTitle"></h1>
+<div class="workspace"><section class="card primary-card" aria-labelledby="connection-heading">
+<div class="card-heading"><h2 id="connection-heading" data-i18n="preview"></h2><p id="copy-feedback" role="status" class="copy-feedback"></p></div>
+<div class="connection-status" role="status" aria-live="polite" aria-atomic="true"><span id="status-icon" class="status-icon" aria-hidden="true">${icon('clock')}</span><span id="status"></span></div>
+<p id="peer-mode" class="peer-mode" hidden></p>
+<p id="error" class="notice error" role="alert" hidden></p>
+<div id="camera" class="camera" hidden>
 <video id="video" muted autoplay playsinline>
 </video>
 <p class="camera-instruction" data-i18n="scanInstruction"></p>
@@ -117,90 +142,8 @@ ${icon('copy')}<span data-i18n="copy"></span>
 </button>
 </div>
 <p id="cli-done" class="hint" data-i18n="cliDone" hidden>
-</p>`
-    : `<div id="qr-wrap" class="qr-wrap">
-<div class="qr-frame">
-<canvas id="qr" data-i18n-aria-label="connectionQR" aria-describedby="qr-help secret-hint" role="img">
-</canvas>
-<div id="qr-loading" class="qr-loading" aria-hidden="true">
-${icon('qr')}
-</div>
-</div>
-<div id="expiry" class="expiry">
-</div>
-</div>
-<div id="connected-art" class="connected-state" hidden>
-${icon('check')}
-<p data-i18n="connectedHelp"></p>
-</div>
-<p id="qr-help" class="qr-help" data-i18n="qrHelp">
 </p>
-<p id="secret-hint" class="secret-hint" data-i18n="qrSecret">
-</p>
-<button id="new-qr" class="button secondary wide">
-${icon('refresh')}<span data-i18n="newQR"></span>
-</button>`
-}
-</section>
-${
-  sender
-    ? ''
-    : `<div class="side-column">
-<section class="card mode-card" aria-labelledby="mode-heading">
-<div class="card-heading">
-<h2 id="mode-heading" data-i18n="stepTwo">
-</h2>
-</div>
-<fieldset id="modes">
-<legend class="sr-only" data-i18n="stepTwo">
-</legend>
-<label class="mode-choice">
-<input type="radio" name="mode" value="auto_open" aria-labelledby="auto-label" aria-describedby="auto-help" checked>
-<span>
-<strong id="auto-label" data-i18n="auto">
-</strong>
-<small id="auto-help" data-i18n="navigationHelp">
-</small>
-</span>
-</label>
-<label class="mode-choice">
-<input type="radio" name="mode" value="display_only" aria-labelledby="display-label" aria-describedby="display-help">
-<span>
-<strong id="display-label" data-i18n="display">
-</strong>
-<small id="display-help" data-i18n="modeHelp">
-</small>
-</span>
-</label>
-</fieldset>
-</section>
-<section class="card result-card" aria-labelledby="result-heading">
-<div class="card-heading">
-<h2 id="result-heading" data-i18n="stepThree">
-</h2>
-<p id="copy-feedback" role="status" class="copy-feedback"></p>
-</div>
-<p id="empty" class="empty" data-i18n="empty">
-</p>
-<div id="receiver-preview" class="preview" hidden>
-<pre id="receiver-text" dir="auto" tabindex="0" data-i18n-aria-label="stepThree">
-</pre>
-</div>
-<p id="cancelled" class="hint" data-i18n="cancelledAuto" hidden>
-</p>
-<div class="actions">
-<button id="open" class="button accent" hidden>
-</button>
-<button id="copy" class="button secondary" hidden>
-${icon('copy')}<span data-i18n="copy"></span>
-</button>
-<button id="clear" class="text-button" data-i18n="clear" hidden>
-</button>
-</div>
-</section>
-</div>`
-}
-</div>
+</section></div>
 <ul class="trust-row">
 <li>
 ${icon('lock')}
@@ -218,15 +161,8 @@ ${icon('clock')}
 </span>
 </li>
 </ul>
-</main>
-<footer>
-<span>qrtoss / <span id="version">
-</span>
-</span>
-<span data-i18n="license">
-</span>
-</footer>
-</div>`;
+</main>`;
+  root.innerHTML = `<div class="shell">${header(paths)}${sender ? senderPage : receiver}${footer()}</div>`;
 }
 export function renderChrome(
   language: Language,
@@ -246,16 +182,19 @@ export function renderChrome(
     node.setAttribute('aria-label', text(node.dataset.i18nAriaLabel as Key));
   });
   el<HTMLSelectElement>('language').value = language;
-  el('status').textContent = text(status);
-  el('status-icon').innerHTML = icon(
-    phase === 'connected'
-      ? 'check'
-      : phase === 'disconnected'
-        ? 'disconnected'
-        : phase === 'pairing'
-          ? 'link'
-          : 'clock',
-  );
+  const statusNode = document.getElementById('status');
+  if (statusNode) statusNode.textContent = text(status);
+  const statusIcon = document.getElementById('status-icon');
+  if (statusIcon)
+    statusIcon.innerHTML = icon(
+      phase === 'connected'
+        ? 'check'
+        : phase === 'disconnected'
+          ? 'disconnected'
+          : phase === 'pairing'
+            ? 'link'
+            : 'clock',
+    );
   el('error').hidden = !errorCode;
   el('error').textContent = errorCode ? errorText(language, errorCode) : '';
   el('copy').hidden = !hasPreview;

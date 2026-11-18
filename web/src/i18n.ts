@@ -1,4 +1,28 @@
 export const en = {
+  receiverPrompt: 'Scan this QR code with your phone’s camera',
+  receiverConnectedPrompt: 'Scan a QR code with your phone’s camera',
+  qrRemaining: '{seconds} seconds',
+  qrValidity: 'Expires in',
+  connectionQRUsed: 'Used connection QR code',
+  marketingTitle: 'No camera? No problem.',
+  marketingTagline: 'QR codes. More freedom. Less effort.',
+  featureCameraTitle: 'No camera. No limits.',
+  featureCameraBody:
+    'On your computer, phone, or tablet. Even without a working camera, QR codes are within reach.',
+  featureScanTitle: "Just scan. That's it.",
+  featureScanBody: 'Use another phone to scan the QR code. No complicated setup. No extra steps.',
+  featureBrowserTitle: 'No downloads. No sign-ups.',
+  featureBrowserBody: 'All you need is a web browser. Nothing to install. No account to create.',
+  featureDevicesTitle: 'Works across devices.',
+  featureDevicesBody:
+    'Windows, macOS, Linux, smartphones, and tablets. Different devices. One seamless experience.',
+  featureSecureTitle: 'Secure by design.',
+  featureSecureBody:
+    'End-to-end encryption keeps your data private. Not even our servers can read it.',
+  featureStorageTitle: 'Sent. Not stored.',
+  featureStorageBody: 'Your transferred data is never stored on our servers.',
+  featureOpenTitle: 'Open source. Open to everyone.',
+  featureOpenBody: 'The code is on GitHub. Explore it, verify it, or help make it better.',
   receive: 'Receive on this device',
   sendTitle: 'Send from your phone',
   scanInstruction: 'Scan the QR code you want to send',
@@ -68,6 +92,30 @@ export const en = {
 };
 export type Key = keyof typeof en;
 const ja: Record<Key, string> = {
+  receiverPrompt: 'スマホのカメラで、このQRコードを読み取ってください',
+  receiverConnectedPrompt: 'スマホのカメラで、QRコードを読み取ってください',
+  qrRemaining: '{seconds} 秒',
+  qrValidity: '有効期限',
+  connectionQRUsed: '使用済みの接続用QRコード',
+  marketingTitle: 'カメラがなくても、QRコードを。',
+  marketingTagline: 'QRコードを、もっと自由に。もっと手軽に。',
+  featureCameraTitle: 'カメラがなくても、大丈夫。',
+  featureCameraBody:
+    'PCでも、スマートフォンでも、タブレットでも。カメラがなくても、使えなくても、QRコードを利用できます。',
+  featureScanTitle: 'スマホで読み取る。それだけ。',
+  featureScanBody: '別のスマートフォンでQRコードをスキャンするだけ。複雑な設定は必要ありません。',
+  featureBrowserTitle: 'インストールも、登録も、いらない。',
+  featureBrowserBody:
+    '必要なのはWebブラウザだけ。アプリのインストールも、アカウント登録も不要です。',
+  featureDevicesTitle: '端末を選ばない。',
+  featureDevicesBody:
+    'Windows、macOS、Linux、スマートフォン、タブレット。OSの違いを気にせず使えます。',
+  featureSecureTitle: '安全に送る。中身は見せない。',
+  featureSecureBody: 'エンドツーエンド暗号化で、転送内容を保護。中継サーバーでも復号できません。',
+  featureStorageTitle: '送るだけ。残さない。',
+  featureStorageBody: 'データはサーバーに保存せず、そのまま中継。転送内容を残しません。',
+  featureOpenTitle: 'オープンソース。だから、透明。',
+  featureOpenBody: 'ソースコードはGitHubで公開。誰でも仕組みを確認し、改善に参加できます。',
   receive: 'この端末で受信',
   sendTitle: 'スマホから送信',
   scanInstruction: '送信したいQRコードをスキャン',
@@ -136,6 +184,33 @@ const ja: Record<Key, string> = {
   version: 'バージョン',
 };
 const es: Record<Key, string> = {
+  receiverPrompt: 'Escanea este código QR con la cámara de tu teléfono',
+  receiverConnectedPrompt: 'Escanea un código QR con la cámara de tu teléfono',
+  qrRemaining: '{seconds} segundos',
+  qrValidity: 'Caduca en',
+  connectionQRUsed: 'Código QR de conexión utilizado',
+  marketingTitle: '¿Sin cámara? No hay problema.',
+  marketingTagline: 'Códigos QR. Más libertad. Menos complicaciones.',
+  featureCameraTitle: 'Sin cámara. Sin límites.',
+  featureCameraBody:
+    'En tu computadora, teléfono o tableta. Aunque no tengas cámara o no funcione, puedes seguir utilizando códigos QR.',
+  featureScanTitle: 'Escanea. Y listo.',
+  featureScanBody:
+    'Usa otro teléfono para escanear el código QR. Sin configuraciones complicadas. Sin pasos innecesarios.',
+  featureBrowserTitle: 'Sin instalaciones. Sin registros.',
+  featureBrowserBody:
+    'Solo necesitas un navegador web. Nada que instalar. Ninguna cuenta que crear.',
+  featureDevicesTitle: 'Funciona en todos tus dispositivos.',
+  featureDevicesBody:
+    'Windows, macOS, Linux, teléfonos y tabletas. Diferentes dispositivos. Una experiencia sencilla.',
+  featureSecureTitle: 'Seguro desde el principio.',
+  featureSecureBody:
+    'El cifrado de extremo a extremo protege tus datos. Ni siquiera nuestros servidores pueden leerlos.',
+  featureStorageTitle: 'Se envía. No se guarda.',
+  featureStorageBody: 'Tus datos pasan por nuestros servidores, pero nunca se almacenan en ellos.',
+  featureOpenTitle: 'Código abierto. Para todos.',
+  featureOpenBody:
+    'El código está disponible en GitHub. Explóralo, compruébalo o ayuda a mejorarlo.',
   receive: 'Recibir en este dispositivo',
   sendTitle: 'Enviar desde el teléfono',
   scanInstruction: 'Escanea el código QR que quieres enviar',

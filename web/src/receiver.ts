@@ -2,7 +2,7 @@ import QRCode from 'qrcode';
 import { C, decodeText, encodeBase64, type AppMessage } from '../../packages/protocol/src/index';
 import { classify } from './content';
 import { translate, type Key, type Language } from './i18n';
-import { Session, type Mode, type Phase } from './session';
+import { Session, type Phase } from './session';
 import type { AppPaths } from './paths';
 import { el, loadLanguage, mountPage, renderChrome } from './view';
 
@@ -17,7 +17,7 @@ export function startReceiver(paths: AppPaths): void {
   let copied = false;
   let manualCopy = false;
   let connectionGeneration = 0;
-  let mode: Mode = 'auto_open';
+  let qrConsumed = false;
   type Receipt = {
     id: string;
     hash: string;
@@ -48,23 +48,55 @@ export function startReceiver(paths: AppPaths): void {
   }
   function render(): void {
     renderChrome(language, status, phase, errorCode, hasPreview, copied, manualCopy);
-    el('peer-mode').hidden = true;
-    const connected = phase === 'connected';
-    el('qr-wrap').hidden = connected || !['waiting', 'pairing', 'creating'].includes(phase);
-    el('connected-art').hidden = !connected;
-    el('qr-help').hidden = connected;
-    el('secret-hint').hidden = connected;
-    el<HTMLFieldSetElement>('modes').disabled = receiptProcessing || (!!current && !current.done);
-    el('receiver-preview').hidden = !hasPreview;
-    if (el('receiver-text').textContent !== preview) el('receiver-text').textContent = preview;
-    el('empty').hidden = hasPreview;
-    el('clear').hidden = !hasPreview;
-    el('cancelled').hidden = !autoCancelled;
     const category = classify(preview);
-    el('open').hidden = !hasPreview || !['web', 'external'].includes(category.kind);
-    el('open').textContent = text(category.kind === 'external' ? 'openExternal' : 'open');
+    const showContent =
+      hasPreview &&
+      !navigating &&
+      (phase === 'disconnected' ||
+        category.kind !== 'web' ||
+        autoCancelled ||
+        !!errorCode ||
+        (!!current?.done && !current.automatic));
+    el('qr-help').textContent = text(qrConsumed ? 'receiverConnectedPrompt' : 'receiverPrompt');
+    el('qr').setAttribute('aria-label', text(qrConsumed ? 'connectionQRUsed' : 'connectionQR'));
+    renderExpiry();
+    el('receiver-result').hidden = !showContent;
+    if (el('receiver-text').textContent !== preview) el('receiver-text').textContent = preview;
+    el('copy').hidden = !showContent;
+    el('clear').hidden = !showContent;
+    el('cancelled').hidden = !autoCancelled;
+    el('open').hidden = !showContent || category.kind !== 'web';
     el<HTMLButtonElement>('open').disabled = !!current && !current.done;
   }
+  function renderExpiry(): void {
+    el('expiry').textContent = translate(language, 'qrRemaining', {
+      seconds:
+        qrConsumed || !expiry ? 0 : Math.max(0, Math.ceil((expiry - performance.now()) / 1000)),
+    });
+  }
+  function consumeQR(): void {
+    if (qrConsumed) return;
+    qrConsumed = true;
+    qrGeneration++;
+    // Destroy the capability-bearing bitmap. This blurred replacement encodes nothing.
+    const target = el<HTMLCanvasElement>('qr');
+    const placeholder = document.createElement('canvas');
+    placeholder.width = placeholder.height = 256;
+    const context = placeholder.getContext('2d')!;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, 256, 256);
+    context.fillStyle = '#171717';
+    for (let y = 0; y < 23; y++)
+      for (let x = 0; x < 23; x++)
+        if ((x * 17 + y * 29) % 7 < 3) context.fillRect(24 + x * 9, 24 + y * 9, 9, 9);
+    // Blur into the replacement pixels, so screenshots cannot recover the original QR.
+    context.filter = 'blur(9px)';
+    context.drawImage(placeholder, 0, 0);
+    target.width = target.height = 256;
+    target.getContext('2d')!.drawImage(placeholder, 0, 0);
+    el('qr-loading').hidden = true;
+  }
+
   function clearReceiptRecords(): void {
     for (const receipt of receipts.values()) clearTimeout(receipt.timer);
     receipts.clear();
@@ -85,6 +117,7 @@ export function startReceiver(paths: AppPaths): void {
         phase(next) {
           if (mine !== connectionGeneration) return;
           phase = next;
+          if (next === 'connected') consumeQR();
           if (next === 'disconnected') {
             if (current && !current.done) finishReceipt(current, false);
             clearReceiptRecords();
@@ -127,7 +160,7 @@ export function startReceiver(paths: AppPaths): void {
           render();
         },
       },
-      mode,
+      'auto_open',
       paths,
     );
     session = value;
@@ -184,10 +217,7 @@ export function startReceiver(paths: AppPaths): void {
         hash,
         deadline: Infinity,
         done: false,
-        automatic:
-          mode === 'auto_open' &&
-          classify(content).kind === 'web' &&
-          document.visibilityState === 'visible',
+        automatic: classify(content).kind === 'web' && document.visibilityState === 'visible',
         navigated: false,
       };
       current = receipt;
@@ -225,6 +255,8 @@ export function startReceiver(paths: AppPaths): void {
       openContent();
       return;
     }
+    if (document.visibilityState === 'visible' && !el('receiver-result').hidden)
+      el('receiver-result').scrollIntoView({ block: 'start' });
     if (receipts.size >= C.MAX_TRANSFERS_PER_ROOM) {
       session?.close('transfer_limit');
       showError('TRANSFER_LIMIT');
@@ -233,7 +265,7 @@ export function startReceiver(paths: AppPaths): void {
   function openContent(): void {
     if (!hasPreview || (current && !current.done) || navigating) return;
     const category = classify(preview);
-    if (!category.href || !['web', 'external'].includes(category.kind)) return;
+    if (!category.href || category.kind !== 'web') return;
     if (current?.navigated && category.kind === 'web') return;
     if (current) current.navigated = true;
     navigating = true;
@@ -282,14 +314,6 @@ export function startReceiver(paths: AppPaths): void {
       render();
     }, 2000);
   });
-  el('new-qr').addEventListener('click', () => void newReceiver());
-  document.querySelectorAll<HTMLInputElement>('input[name="mode"]').forEach((input) => {
-    input.addEventListener('change', () => {
-      mode = input.value as Mode;
-      void session?.setMode(mode).catch(() => {});
-      render();
-    });
-  });
   el('open').addEventListener('click', openContent);
   el('clear').addEventListener('click', () => {
     if (current && !current.done) return;
@@ -320,12 +344,7 @@ export function startReceiver(paths: AppPaths): void {
       render();
     }
   });
-  setInterval(() => {
-    if (expiry)
-      el('expiry').textContent = translate(language, 'expires', {
-        seconds: Math.max(0, Math.ceil((expiry - performance.now()) / 1000)),
-      });
-  }, 500);
+  setInterval(renderExpiry, 500);
   el('version').textContent = `${__APP_VERSION__} (${__SOURCE_COMMIT__})`;
   render();
   if (!isSecureContext || !crypto.subtle) {

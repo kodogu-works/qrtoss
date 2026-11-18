@@ -275,18 +275,6 @@ h2 {
   font-size: var(--helper-size);
   font-variant-numeric: tabular-nums;
 }
-.qr-help,
-.secret-hint {
-  color: var(--muted);
-  text-align: center;
-  font-size: var(--helper-size);
-}
-.qr-help {
-  margin: 12px 0 6px;
-}
-.secret-hint {
-  margin: 0 0 16px;
-}
 
 .button,
 .text-button {
@@ -359,77 +347,6 @@ h2 {
   padding-inline: 0;
   min-width: 44px;
 }
-.side-column {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-fieldset {
-  display: grid;
-  gap: 10px;
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-}
-
-.mode-choice {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-height: 44px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--control-radius);
-  cursor: pointer;
-}
-
-.mode-choice:hover {
-  border-color: var(--ink);
-}
-.mode-choice:has(:checked) {
-  border-color: var(--ink);
-  background: var(--surface);
-}
-.mode-choice:has(:focus-visible) {
-  outline: 2px solid var(--ink);
-  outline-offset: 3px;
-}
-.mode-choice input {
-  width: 20px;
-  height: 20px;
-  margin: 2px 0 0;
-  flex: none;
-  accent-color: var(--ink);
-}
-.mode-choice > span {
-  min-width: 0;
-}
-.mode-choice strong {
-  display: block;
-  font-size: var(--body-size);
-  font-weight: 600;
-}
-.mode-choice small {
-  display: block;
-  margin-block-start: 3px;
-  color: var(--muted);
-  font-size: var(--helper-size);
-}
-fieldset:disabled .mode-choice {
-  cursor: not-allowed;
-  border-color: var(--disabled);
-  color: var(--disabled-ink);
-}
-fieldset:disabled .mode-choice small {
-  color: var(--disabled-ink);
-}
-.empty {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--body-size);
-}
-
 .preview {
   min-width: 0;
   max-width: 100%;
@@ -483,22 +400,6 @@ fieldset:disabled .mode-choice small {
   color: var(--muted);
 }
 
-.connected-state {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-block: 16px;
-  color: var(--muted);
-  font-size: var(--helper-size);
-}
-
-.connected-state > .icon {
-  width: 28px;
-  height: 28px;
-}
-.connected-state p {
-  margin: 0;
-}
 .trust-row {
   display: flex;
   justify-content: center;
@@ -591,13 +492,7 @@ footer {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
-  .side-column {
-    gap: var(--gap);
-  }
   .qr-wrap {
-    margin-block-start: 16px;
-  }
-  .qr-help {
     margin-block-start: 16px;
   }
   .preview pre {
@@ -716,4 +611,102 @@ footer {
 }
 .camera-actions > .button {
   flex: 1;
+}
+
+/* A single, stable pairing area; product information continues below the fold. */
+.receiver-main .pairing-stage {
+  min-height: min(540px, calc(100svh - 80px));
+  padding-block: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.receiver-main #qr-help {
+  width: min(100%, 680px);
+  min-height: 2.8em;
+  text-wrap: balance;
+  margin: 0 0 20px;
+  text-align: center;
+  font-size: 22px;
+  line-height: 1.4;
+}
+.receiver-main .qr-wrap {
+  --qr-size: clamp(180px, calc(100svh - 360px), 256px);
+  width: 100%;
+  margin: 0;
+}
+.receiver-main .expiry {
+  margin: 16px 0 0;
+  min-height: 24px;
+  line-height: 24px;
+  font-size: 15px;
+}
+.receiver-main #error {
+  max-width: 560px;
+}
+.receiver-main .result-card {
+  width: min(100%, 640px);
+  margin: 16px auto 48px;
+}
+.receiver-main .preview pre {
+  max-height: min(45svh, 360px);
+}
+.marketing {
+  padding-block: 48px 64px;
+}
+.marketing-intro {
+  text-align: center;
+  max-width: 900px;
+  margin: 0 auto 64px;
+}
+.marketing-intro h2 {
+  font-size: clamp(32px, 4.5vw, 52px);
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.marketing-intro > p {
+  margin: 20px 0 0;
+  font-size: clamp(18px, 2.2vw, 24px);
+  color: var(--muted);
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px 56px;
+  max-width: 960px;
+  margin: auto;
+}
+.feature-grid h3 {
+  font-size: 21px;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.feature-grid p {
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .receiver-main .pairing-stage {
+    padding-block: 20px 28px;
+  }
+  .receiver-main #qr-help {
+    font-size: 20px;
+  }
+  .marketing {
+    padding-block: 40px 48px;
+  }
+  .marketing-intro {
+    margin-block-end: 40px;
+  }
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
 }

@@ -132,7 +132,6 @@ for (const basePath of ['/', '/qrtoss/'])
       if (directory) await rm(directory, { recursive: true, force: true });
     });
     async function pairingURL(page: Page) {
-      await expect(page.locator('#status')).toHaveText(/Waiting for your phone/);
       await expect(page.locator('#qr-loading')).toBeHidden();
       // Decode actual canvas pixels without automation injecting screenshot CSS.
       const image = await page.locator('#qr').evaluate((canvas: HTMLCanvasElement) => ({
@@ -275,7 +274,8 @@ for (const basePath of ['/', '/qrtoss/'])
       await s.goto(url);
       await expect(s).toHaveURL(base + 'send');
       await expect(s.locator('#camera')).toBeVisible();
-      await expect(r.locator('#status')).toHaveText('The sender is scanning a QR code.');
+      await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
+      await expect(r.locator('#expiry')).toHaveText('0 seconds');
       return {
         r,
         s,
@@ -289,7 +289,7 @@ for (const basePath of ['/', '/qrtoss/'])
         decoderWorkers: () => decoderWorkers,
       };
     }
-    test('receiver layout fits the design viewports in all languages', async ({ page }) => {
+    test('minimal receiver keeps QR and expiry in view in every language', async ({ page }) => {
       await page.goto(base);
       await pairingURL(page);
       for (const viewport of [
@@ -298,103 +298,63 @@ for (const basePath of ['/', '/qrtoss/'])
         { width: 1024, height: 768 },
         { width: 390, height: 844 },
         { width: 375, height: 667 },
+        { width: 320, height: 740 },
       ]) {
         await page.setViewportSize(viewport);
         for (const language of ['ja', 'en', 'es'] as const) {
-          await test.step(`${language} ${viewport.width}×${viewport.height}`, async () => {
-            await page.locator('#language').selectOption(language);
-            await expect(page.locator('h1')).toHaveText(translate(language, 'receive'));
-            await expect(page.locator('#qr')).toHaveAccessibleName(
-              translate(language, 'connectionQR'),
-            );
-            await expect(page.locator('#expiry')).toContainText(
-              translate(language, 'expires', { seconds: '' }).split(' ')[0]!,
-            );
-            const layout = await page.evaluate(() => {
-              const bounds = (selector: string) => {
-                const rect = document.querySelector(selector)!.getBoundingClientRect();
-                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-              };
-              return {
-                width: document.documentElement.scrollWidth,
-                height: document.documentElement.scrollHeight,
-                header: bounds('.topbar'),
-                title: bounds('h1'),
-                primary: bounds('.primary-card'),
-                mode: bounds('.mode-card'),
-                qr: bounds('#qr'),
-                controls: Array.from(
-                  document.querySelectorAll('#new-qr, #language, .github-link, .mode-choice'),
-                  (node) => {
-                    const rect = node.getBoundingClientRect();
-                    return { width: rect.width, height: rect.height };
-                  },
-                ),
-                fontSizes: Array.from(
-                  document.querySelectorAll(
-                    'h1, h2, #status, #expiry, .qr-help, .secret-hint, .mode-choice strong, .mode-choice small, #empty, button, select, footer',
-                  ),
-                  (node) => Number.parseFloat(getComputedStyle(node).fontSize),
-                ),
-              };
-            });
-            expect(layout.width).toBeLessThanOrEqual(viewport.width);
-            expect(layout.header.height).toBeGreaterThanOrEqual(56);
-            expect(layout.header.height).toBeLessThanOrEqual(64);
-            expect(layout.title.x).toBe(layout.primary.x);
-            expect(layout.qr.width).toBeGreaterThanOrEqual(180);
-            expect(layout.qr.width).toBeLessThanOrEqual(260);
-            expect(layout.qr.height).toBeCloseTo(layout.qr.width);
-            expect(Math.min(...layout.fontSizes)).toBeGreaterThanOrEqual(14);
-            for (const control of layout.controls) {
-              expect(control.width).toBeGreaterThanOrEqual(44);
-              expect(control.height).toBeGreaterThanOrEqual(44);
-            }
-            if (viewport.width >= 1024) {
-              expect(layout.height).toBeLessThanOrEqual(viewport.height);
-              expect(layout.primary.y).toBe(layout.mode.y);
-              expect(layout.mode.x).toBeGreaterThan(layout.primary.x);
-            } else {
-              expect(layout.mode.x).toBe(layout.primary.x);
-              expect(layout.mode.y).toBeGreaterThan(layout.primary.y + layout.primary.height);
-            }
-            // Decode the displayed pixels, including CSS scaling and the QR quiet zone.
-            const image = PNG.sync.read(await page.locator('#qr').screenshot());
-            const decoded = jsQR(new Uint8ClampedArray(image.data), image.width, image.height);
-            expect(decoded).toBeTruthy();
-            expect(new URL(decoded!.data).pathname).toBe(basePath + 'send');
-            await page.screenshot({
-              path: test.info().outputPath(`receiver-${language}-${viewport.width}.png`),
-              fullPage: true,
-            });
+          await page.locator('#language').selectOption(language);
+          await expect(page.locator('#qr-help')).toHaveText(translate(language, 'receiverPrompt'));
+          await expect(page.locator('#qr')).toHaveAccessibleName(
+            translate(language, 'connectionQR'),
+          );
+          await expect(page.locator('#receiver-result')).toBeHidden();
+          await expect(page.locator('#modes, #new-qr, #secret-hint, #status')).toHaveCount(0);
+          await expect(page.locator('#marketing-title')).toHaveText(
+            translate(language, 'marketingTitle'),
+          );
+          await expect(page.locator('.feature-grid article')).toHaveCount(7);
+          const layout = await page.evaluate(() => {
+            const rect = (selector: string) => {
+              const r = document.querySelector(selector)!.getBoundingClientRect();
+              return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom };
+            };
+            return {
+              width: document.documentElement.scrollWidth,
+              qr: rect('#qr'),
+              expiry: rect('.expiry'),
+              header: rect('.topbar'),
+              font: parseFloat(getComputedStyle(document.querySelector('#expiry')!).fontSize),
+            };
+          });
+          expect(layout.width).toBeLessThanOrEqual(viewport.width);
+          expect(layout.qr.width).toBeGreaterThanOrEqual(180);
+          expect(layout.qr.width).toBeLessThanOrEqual(260);
+          expect(layout.qr.bottom).toBeLessThan(viewport.height);
+          expect(layout.expiry.bottom).toBeLessThanOrEqual(viewport.height);
+          expect(layout.font).toBeGreaterThanOrEqual(14);
+          expect(layout.header.height).toBeGreaterThanOrEqual(56);
+          expect(layout.header.height).toBeLessThanOrEqual(64);
+          const image = PNG.sync.read(await page.locator('#qr').screenshot());
+          expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeTruthy();
+          await page.screenshot({
+            path: test.info().outputPath(`receiver-${language}-${viewport.width}.png`),
+            fullPage: true,
           });
         }
       }
     });
 
-    test('mode cards, keyboard focus, QR refresh and GitHub link are usable', async ({ page }) => {
+    test('language keyboard focus, reload and GitHub link are usable', async ({ page }) => {
       await page.goto(base);
       const original = await pairingURL(page);
-      const auto = page.locator('input[value="auto_open"]');
-      const display = page.locator('input[value="display_only"]');
-      await page
-        .locator('.mode-choice')
-        .nth(1)
-        .click({ position: { x: 5, y: 5 } });
-      await expect(display).toBeChecked();
-      await display.focus();
-      await page.keyboard.press('ArrowUp');
-      await expect(auto).toBeChecked();
-      await expect(auto).toBeFocused();
-      await expect(page.locator('.mode-choice').first()).toHaveCSS('outline-style', 'solid');
-      await page.keyboard.press('ArrowDown');
-      await expect(display).toBeChecked();
-      await page.locator('#new-qr').click();
-      expect(await pairingURL(page)).not.toBe(original);
-      await expect(display).toBeChecked();
-      await expect(page.locator('.connection-status')).toHaveAttribute('role', 'status');
+      await page.locator('#language').focus();
+      await expect(page.locator('#language')).toHaveCSS('outline-style', 'solid');
       await page.locator('#language').selectOption('ja');
-      const github = page.getByRole('link', { name: translate('ja', 'githubLabel') });
+      await expect(page.locator('#qr-help')).toHaveText(translate('ja', 'receiverPrompt'));
+      await page.locator('#language').selectOption('en');
+      await page.reload();
+      expect(await pairingURL(page)).not.toBe(original);
+      const github = page.getByRole('link', { name: translate('en', 'githubLabel') });
       await expect(github).toHaveAttribute('href', 'https://github.com/kodogu-works/qrtoss');
       await expect(github).toHaveAttribute('target', '_blank');
       await expect(github).toHaveAttribute('rel', 'noopener noreferrer');
@@ -411,15 +371,65 @@ for (const basePath of ['/', '/qrtoss/'])
       await popup.close();
     });
 
-    test('long received content wraps, scrolls, copies and clears', async ({ browser }) => {
-      const text = 'https://example.org/' + '0123456789'.repeat(65);
+    test('pairing replaces QR pixels without moving the layout or allowing rejoin', async ({
+      browser,
+    }) => {
+      const rc = await browser.newContext({ locale: 'en-US' }),
+        sc = await browser.newContext({ locale: 'en-US' });
+      const r = await rc.newPage(),
+        s = await sc.newPage();
+      try {
+        await r.setViewportSize({ width: 375, height: 667 });
+        await r.goto(base);
+        const original = await pairingURL(r);
+        const geometry = () =>
+          r.evaluate(() =>
+            Array.from(document.querySelectorAll('#qr-help,#qr,.expiry,.marketing'), (node) => {
+              const rect = node.getBoundingClientRect();
+              return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+            }),
+          );
+        const before = await geometry();
+        await fakeCamera(s, 'fixture');
+        await s.goto(original);
+        await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
+        await expect(r.locator('#expiry')).toHaveText('0 seconds');
+        expect(await geometry()).toEqual(before);
+        const image = PNG.sync.read(await r.locator('#qr').screenshot());
+        expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeNull();
+        for (const language of ['ja', 'en', 'es'] as const) {
+          await r.locator('#language').selectOption(language);
+          await expect(r.locator('#qr-help')).toHaveText(
+            translate(language, 'receiverConnectedPrompt'),
+          );
+          await expect(r.locator('#expiry')).toHaveText(
+            translate(language, 'qrRemaining', { seconds: 0 }),
+          );
+        }
+        await r.screenshot({
+          path: test.info().outputPath('receiver-connected.png'),
+          fullPage: true,
+        });
+        const other = await sc.newPage();
+        await other.goto(original);
+        await expect(other.locator('#error')).toBeVisible();
+        await expect(other.locator('#camera')).toBeHidden();
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
+    test('long non-URL content wraps, scrolls, copies and clears', async ({ browser }) => {
+      const text = 'QR content\n' + '0123456789'.repeat(65);
       const { r, s, rc, sc, failures } = await pages(browser, text);
       try {
-        await r.locator('.mode-choice').nth(1).click();
         await scanQR(s, text);
         await s.locator('#send').click();
+        await expect(r.locator('#receiver-result')).toBeVisible();
         await expect(r.locator('#receiver-text')).toHaveText(text);
-        await expect(r.locator('#open')).toBeEnabled();
+        await expect(r.locator('#open')).toBeHidden();
+        await expect(r).toHaveURL(base);
         for (const viewport of [
           { width: 1440, height: 900 },
           { width: 1280, height: 720 },
@@ -430,38 +440,21 @@ for (const basePath of ['/', '/qrtoss/'])
           await r.setViewportSize(viewport);
           for (const language of ['ja', 'en', 'es']) {
             await r.locator('#language').selectOption(language);
-            await r.screenshot({
-              path: test.info().outputPath(`received-${language}-${viewport.width}.png`),
-              fullPage: true,
-            });
             const content = await r.locator('#receiver-text').evaluate((node) => ({
               width: node.scrollWidth,
               visibleWidth: node.clientWidth,
               height: node.scrollHeight,
               visibleHeight: node.clientHeight,
               pageWidth: document.documentElement.scrollWidth,
-              pageHeight: document.documentElement.scrollHeight,
-              regions: Array.from(
-                document.querySelectorAll(
-                  'main, .primary-card, .mode-card, .result-card, .actions, footer',
-                ),
-                (region) => ({
-                  name: region.className || region.tagName,
-                  height: region.getBoundingClientRect().height,
-                }),
-              ),
             }));
             expect(content.width).toBeLessThanOrEqual(content.visibleWidth);
-            expect(content.height).toBeGreaterThan(content.visibleHeight);
+            if (viewport.width <= 390)
+              expect(content.height).toBeGreaterThan(content.visibleHeight);
+            else expect(content.height).toBeGreaterThanOrEqual(content.visibleHeight);
             expect(content.pageWidth).toBeLessThanOrEqual(viewport.width);
-            if (viewport.width >= 1024)
-              expect(
-                content.pageHeight,
-                JSON.stringify({ language, viewport, content }),
-              ).toBeLessThanOrEqual(viewport.height);
           }
         }
-        await r.evaluate(() => {
+        await r.evaluate(() =>
           Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
             value: {
@@ -469,21 +462,15 @@ for (const basePath of ['/', '/qrtoss/'])
                 (window as unknown as { copiedText: string }).copiedText = value;
               },
             },
-          });
-        });
+          }),
+        );
         await r.locator('#copy').click();
         expect(
           await r.evaluate(() => (window as unknown as { copiedText: string }).copiedText),
         ).toBe(text);
         await expect(r.locator('#copy-feedback')).toHaveText(translate('es', 'copied'));
-        await r.setViewportSize({ width: 1280, height: 720 });
-        expect(await r.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
-          720,
-        );
         await r.locator('#clear').click();
-        await expect(r.locator('#empty')).toBeVisible();
-        await expect(r.locator('#receiver-preview')).toBeHidden();
-        await expect(r.locator('#copy')).toBeHidden();
+        await expect(r.locator('#receiver-result')).toBeHidden();
         expect(failures).toEqual([]);
       } finally {
         await rc.close();
@@ -500,7 +487,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('.camera-instruction')).toHaveText(
           'Scan the QR code you want to send',
         );
-        await expect(r.locator('#status')).toHaveText('The sender is scanning a QR code.');
+        await expect(r.locator('#expiry')).toHaveText('0 seconds');
         for (const viewport of [
           { width: 390, height: 844 },
           { width: 375, height: 667 },
@@ -519,7 +506,7 @@ for (const basePath of ['/', '/qrtoss/'])
         }
         await s.goto(base);
         expect(await s.evaluate(() => document.querySelector('video'))).toBeNull();
-        await expect(r.locator('#status')).toContainText('Disconnected');
+        await expect(r.locator('#expiry')).toHaveText('0 seconds');
       } finally {
         await rc.close();
         await sc.close();
@@ -551,7 +538,6 @@ for (const basePath of ['/', '/qrtoss/'])
         'unused',
       );
       try {
-        await r.locator('input[value="display_only"]').check();
         await s.evaluate(() => {
           Object.defineProperty(MediaDevices.prototype, 'getUserMedia', {
             configurable: true,
@@ -584,7 +570,7 @@ for (const basePath of ['/', '/qrtoss/'])
           buffer: PNG.sync.write(new PNG({ width: 64, height: 64 })),
         });
         await expect(s.locator('#photo-error')).toBeVisible();
-        const content = 'https://example.org/local-photo';
+        const content = 'Photo content: https://example.org/local-photo';
         const image = await QRCode.toBuffer(content, { width: 300, margin: 4 });
         await s
           .locator('#photo-input')
@@ -610,14 +596,13 @@ for (const basePath of ['/', '/qrtoss/'])
       }
     });
 
-    test('camera QR → explicit confirmation → encrypted transfer to display-only receiver', async ({
+    test('camera QR → explicit confirmation → encrypted transfer displays non-URL content', async ({
       browser,
     }) => {
-      const text = 'https://example.org/scan?qrtoss=1';
+      const text = 'QR scan fixture: https://example.org/scan?qrtoss=1';
       const { r, s, rc, sc, failures, cspViolations, requestPaths, socketPaths, decoderWorkers } =
         await pages(browser, text);
       try {
-        await r.locator('input[value="display_only"]').check();
         await scanQR(s, text);
         expect(
           await s.evaluate(() => {
@@ -631,7 +616,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('#status')).toHaveText('Received by the other device');
         await expect(r.locator('#receiver-text')).toHaveText(text);
         await expect(r).toHaveURL(base);
-        await expect(r.locator('#open')).toBeEnabled();
+        await expect(r.locator('#open')).toBeHidden();
         expect(failures).toEqual([]);
         expect(cspViolations).toEqual([]);
         expect(
@@ -668,7 +653,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await r.route(text, (route) =>
           route.fulfill({ body: 'received destination', contentType: 'text/plain' }),
         );
-        await expect(r.locator('input[value="auto_open"]')).toBeChecked();
+        await expect(r.locator('#receiver-result')).toBeHidden();
         await scanQR(s, text);
         await s.locator('#send').click();
         await expect(r).toHaveURL(text);
@@ -680,6 +665,61 @@ for (const basePath of ['/', '/qrtoss/'])
         await sc.close();
       }
     });
+    test('background web receipts require a manual open after returning', async ({ browser }) => {
+      const text = 'https://example.org/background-receipt';
+      const { r, s, rc, sc, failures } = await pages(browser, text);
+      try {
+        await r.route(text, (route) =>
+          route.fulfill({ body: 'manual destination', contentType: 'text/plain' }),
+        );
+        await r.evaluate(() =>
+          Object.defineProperty(document, 'visibilityState', {
+            configurable: true,
+            value: 'hidden',
+          }),
+        );
+        await scanQR(s, text);
+        await s.locator('#send').click();
+        await expect(r.locator('#receiver-result')).toBeVisible();
+        await expect(r.locator('#receiver-text')).toHaveText(text);
+        await expect(r).toHaveURL(base);
+        await r.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', {
+            configurable: true,
+            value: 'visible',
+          });
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await expect(r).toHaveURL(base);
+        await s.close();
+        await expect(r.locator('#receiver-result')).toBeVisible();
+        await expect(r.locator('#open')).toBeVisible();
+        await expect(r.locator('#open')).toBeEnabled();
+        await r.locator('#open').click();
+        await expect(r).toHaveURL(text);
+        expect(failures).toEqual([]);
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
+    test('non-web URLs are displayed as literal text without an app link', async ({ browser }) => {
+      const text = 'mailto:hello@example.org';
+      const { r, s, rc, sc } = await pages(browser, text);
+      try {
+        await scanQR(s, text);
+        await s.locator('#send').click();
+        await expect(r.locator('#receiver-result')).toBeVisible();
+        await expect(r.locator('#receiver-text')).toHaveText(text);
+        await expect(r.locator('#open')).toBeHidden();
+        await expect(r).toHaveURL(base);
+      } finally {
+        await rc.close();
+        await sc.close();
+      }
+    });
+
     test('inert content stays literal, language switches and mobile layout fits', async ({
       browser,
     }) => {
@@ -692,12 +732,12 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(r.locator('#open')).toBeHidden();
         await r.setViewportSize({ width: 320, height: 740 });
         await r.locator('#language').selectOption('ja');
-        await expect(r.locator('h1')).toHaveText('この端末で受信');
+        await expect(r.locator('h1')).toHaveText(translate('ja', 'receiverConnectedPrompt'));
         expect(
           await r.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         ).toBe(true);
         await r.locator('#language').selectOption('es');
-        await expect(r.locator('h1')).toHaveText('Recibir en este dispositivo');
+        await expect(r.locator('h1')).toHaveText(translate('es', 'receiverConnectedPrompt'));
         expect(failures).toEqual([]);
         expect(cspViolations).toEqual([]);
       } finally {
@@ -760,11 +800,11 @@ for (const basePath of ['/', '/qrtoss/'])
           Object.defineProperty(performance, 'now', { configurable: true, value: () => 1001 });
         });
         // The UI timer has run past the advertised deadline while pair.committed is delayed.
-        await expect(r.locator('#expiry')).toHaveText('Expires in 0s');
+        await expect(r.locator('#expiry')).toHaveText('0 seconds');
         await expect(r.locator('#error')).toBeHidden();
         expect(controls).not.toContain('room.close');
         release();
-        await expect(r.locator('#status')).toHaveText('Connected securely');
+        await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
         await expect(s.locator('#status')).toHaveText(
           /Connected securely|Point the camera at a QR code/,
         );
@@ -819,7 +859,7 @@ for (const basePath of ['/', '/qrtoss/'])
           // The server notification follows the delayed proof on the same ordered stream.
           fixture.relay.sweep();
           if (expired === 'candidate') {
-            await expect(r.locator('#status')).toHaveText('Waiting for your phone');
+            await expect(r.locator('#qr')).toHaveAccessibleName('Connection QR code');
             await expect(r.locator('#error')).toBeHidden();
             expect(fixture.relay.stats().rooms).toBe(1);
           } else {
