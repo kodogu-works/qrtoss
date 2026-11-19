@@ -38,12 +38,17 @@ export function responseHeaders(url?: URL): Record<string, string> {
 }
 
 export function staticPath(path: string) {
+  const cliAsset =
+    path === '/run.sh' ||
+    /^\/cli\/[0-9A-Za-z.-]+\/(?:run\.sh|qrtoss_[0-9A-Za-z.-]+_(?:darwin|linux)_(?:arm64|amd64)|SHA256SUMS(?:\.sig)?|LICENSE\.md|THIRD_PARTY_NOTICES|qrtoss\.rb)$/.test(
+      path,
+    );
   const requested =
     path === '/'
       ? 'index.html'
       : path === '/send'
         ? 'send/index.html'
-        : path.startsWith('/assets/')
+        : cliAsset || path.startsWith('/assets/')
           ? path.slice(1)
           : undefined;
   return requested &&

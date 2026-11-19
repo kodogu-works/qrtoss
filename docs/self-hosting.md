@@ -138,6 +138,18 @@ PUBLIC_ORIGIN=https://qr.example.com npm run deploy:cloudflare
 
 The script generates a temporary configuration, sets `workers_dev`, `routes` and `vars.PUBLIC_ORIGIN` together, validates it, and removes it after Wrangler exits. The repository configuration is unchanged. For workers.dev, the Worker name in the URL must match `name` in `wrangler.jsonc`. `PUBLIC_ORIGIN` is read from the shell for deployment; it is not automatically loaded from a `.env` file. When omitted, deployment uses `wrangler.jsonc` as before.
 
+Deployment (including `--dry-run`) also requires Go 1.24 or newer on PATH, or a Go executable selected with `GO`. After building the Web assets, it builds the four macOS/Linux arm64/amd64 CLI binaries using the version in `package.json`, embeds the deployment's public origin as the default server, and generates a launcher with SHA-256 verification. The release files are included in the same static assets at `/cli/<version>/`, with a copy of the launcher at `/run.sh`. No separate CLI deployment or `QRTOSS_*` environment variables are needed.
+
+For example, after deploying to `https://qrtoss.kodogu.workers.dev`:
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh
+# Pass CLI options:
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --timeout 120
+```
+
+The launcher downloads, verifies and caches the binary, then receives one item and exits. It does not install a command on PATH. Each deployment includes the current CLI version only; retain older release assets separately if old versioned launcher URLs must remain available.
+
 Alternatively, edit `wrangler.jsonc` and choose one hosting mode:
 
 | Setting | Custom domain (repository default) | `workers.dev` |

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -37,6 +37,21 @@ try {
   ]);
 
   await run('npm', ['run', 'build:web']);
+  if (action === 'deploy') {
+    const config = JSON.parse(await readFile(configPath ?? 'wrangler.jsonc', 'utf8'));
+    const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+    if (typeof version !== 'string' || !/^[0-9A-Za-z.-]+$/.test(version))
+      throw new Error('CLI_VERSION_INVALID');
+    const origin = config.vars.PUBLIC_ORIGIN;
+    const assets = resolve(config.assets.directory);
+    const output = join(assets, 'cli', version);
+    await run('sh', ['scripts/release-cli.sh', output], {
+      ...process.env,
+      QRTOSS_PUBLIC_ORIGIN: origin,
+      QRTOSS_DOWNLOAD_BASE_URL: `${origin}/cli/${version}`,
+    });
+    await copyFile(join(output, 'run.sh'), join(assets, 'run.sh'));
+  }
   if (action === 'dev') {
     await run(
       'wrangler',
