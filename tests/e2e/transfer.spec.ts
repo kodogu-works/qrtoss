@@ -12,6 +12,17 @@ import { createRelay, type RelayOptions } from '../../server/src/index.ts';
 import { C } from '../../packages/protocol/src/index.ts';
 import { translate } from '../../web/src/i18n.ts';
 
+// The connected countdown uses the protocol's session timeout in every language.
+async function expectSessionExpiry(page: Page, language: 'ja' | 'en' | 'es' = 'en') {
+  await expect(async () => {
+    const text = (await page.locator('#expiry').textContent()) ?? '';
+    const seconds = Number(text.match(/\d+/)?.[0]);
+    expect(seconds).toBeGreaterThanOrEqual(C.SESSION_IDLE_SECONDS - 15);
+    expect(seconds).toBeLessThanOrEqual(C.SESSION_IDLE_SECONDS);
+    expect(text).toBe(translate(language, 'qrRemaining', { seconds }));
+  }).toPass({ timeout: 5000 });
+}
+
 /** Match the production proxy contract: strip the mount from HTTP and WS paths. */
 async function deployment(
   basePath: string,
@@ -363,7 +374,7 @@ for (const basePath of ['/', '/qrtoss/'])
       await expect(s).toHaveURL(base + 'send');
       await expect(s.locator('#camera')).toBeVisible();
       await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-      await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
+      await expectSessionExpiry(r);
       return {
         r,
         s,
@@ -421,7 +432,8 @@ for (const basePath of ['/', '/qrtoss/'])
           expect(layout.expiry.bottom).toBeLessThanOrEqual(viewport.height);
           expect(layout.font).toBeGreaterThanOrEqual(14);
           expect(layout.header.height).toBeGreaterThanOrEqual(56);
-          expect(layout.header.height).toBeLessThanOrEqual(64);
+          // Receiver help wraps the header controls on narrow screens.
+          expect(layout.header.height).toBeLessThanOrEqual(viewport.width <= 480 ? 112 : 64);
           const image = PNG.sync.read(await page.locator('#qr').screenshot());
           expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeTruthy();
           await page.screenshot({
@@ -485,7 +497,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await fakeCamera(s, 'fixture');
         await s.goto(original);
         await expect(r.locator('#qr')).toHaveAccessibleName('Used connection QR code');
-        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
+        await expectSessionExpiry(r);
         expect(await geometry()).toEqual(before);
         expect(
           await r.locator('#qr').evaluate((node) => {
@@ -493,7 +505,6 @@ for (const basePath of ['/', '/qrtoss/'])
             return [canvas.width, canvas.height];
           }),
         ).toEqual(bitmap);
-        await expect(r.locator('#expiry')).toHaveText(/179\d seconds/);
         const image = PNG.sync.read(await r.locator('#qr').screenshot());
         expect(jsQR(new Uint8ClampedArray(image.data), image.width, image.height)).toBeNull();
         for (const language of ['ja', 'en', 'es'] as const) {
@@ -501,14 +512,7 @@ for (const basePath of ['/', '/qrtoss/'])
           await expect(r.locator('#qr-help')).toHaveText(
             translate(language, 'receiverConnectedPrompt'),
           );
-          await expect(r.locator('#expiry')).toHaveText(
-            new RegExp(
-              translate(language, 'qrRemaining', { seconds: C.SESSION_IDLE_SECONDS }).replace(
-                String(C.SESSION_IDLE_SECONDS),
-                '1[78]\\d{2}',
-              ),
-            ),
-          );
+          await expectSessionExpiry(r, language);
         }
         await r.screenshot({
           path: test.info().outputPath('receiver-connected.png'),
@@ -591,7 +595,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('#sender-instruction')).toHaveText(
           'Scan the QR code you want to send',
         );
-        await expect(r.locator('#expiry')).toHaveText(/1[78]\d{2} seconds/);
+        await expectSessionExpiry(r);
         for (const viewport of [
           { width: 390, height: 844 },
           { width: 375, height: 667 },

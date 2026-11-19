@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # Only branch pushes; tag pushes would re-run CI on an already-tested commit.
+    branches: ['**']
   pull_request:
 
 permissions:
@@ -70,6 +72,12 @@ jobs:
   e2e:
     name: E2E (${{ matrix.browser }})
     runs-on: ubuntu-latest
+    # The official image ships browsers and their system dependencies, so the job
+    # skips the multi-minute `playwright install --with-deps` step.
+    # Keep the tag in sync with @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
+      options: --user 1001
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -82,7 +90,6 @@ jobs:
           node-version: 26.13.0
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run test:e2e -- --project=${{ matrix.browser }}
       - name: Preserve browser failure diagnostics
         if: failure() || cancelled()

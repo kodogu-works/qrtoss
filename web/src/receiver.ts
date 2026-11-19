@@ -102,8 +102,21 @@ export function startReceiver(paths: AppPaths): void {
     output.save();
     output.fillStyle = '#ffffff';
     output.fillRect(0, 0, target.width, target.height);
-    output.filter = `blur(${(5 * target.width) / 256}px)`;
-    output.drawImage(source, 0, 0);
+    const radius = (5 * target.width) / 256;
+    if ('filter' in CanvasRenderingContext2D.prototype) {
+      output.filter = `blur(${radius}px)`;
+      output.drawImage(source, 0, 0);
+    } else {
+      // Without canvas filters (Safari before 18) a filter assignment is silently ignored and
+      // would redraw a scannable QR. Shrinking below the module pitch averages modules together
+      // like the blur does, and scaling back up keeps the same soft appearance.
+      const small = shrink(source, Math.ceil(target.width / (2 * radius)));
+      output.imageSmoothingEnabled = true;
+      output.imageSmoothingQuality = 'high';
+      output.drawImage(small, 0, 0, target.width, target.height);
+      small.width = 0;
+      small.height = 0;
+    }
     output.restore();
     // Release the unblurred snapshot once the replacement has been drawn.
     source.width = 0;
@@ -377,4 +390,23 @@ export function startReceiver(paths: AppPaths): void {
     state('disconnected');
     showError('CRYPTO_UNAVAILABLE');
   } else void newReceiver();
+}
+
+/** Halve repeatedly so every source pixel contributes, then return a canvas at most `size` wide. */
+function shrink(source: HTMLCanvasElement, size: number): HTMLCanvasElement {
+  let current = source;
+  while (current.width > size || current.height > size) {
+    const next = document.createElement('canvas');
+    next.width = Math.max(Math.min(size, current.width), Math.ceil(current.width / 2));
+    next.height = Math.max(Math.min(size, current.height), Math.ceil(current.height / 2));
+    const context = next.getContext('2d')!;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(current, 0, 0, next.width, next.height);
+    if (current !== source) {
+      current.width = 0;
+      current.height = 0;
+    }
+    current = next;
+  }
+  return current;
 }
