@@ -480,8 +480,7 @@ for (const scenario of ['commit', 'lateProof'] as const) {
       assert.doesNotMatch(session.diagnostics(), /PROTOCOL_ERROR/);
       if (scenario === 'lateProof') {
         assert.equal(
-          (session.diagnostics().match(/^Scan this QR code with your phone’s camera$/gm) ?? [])
-            .length,
+          (session.diagnostics().match(/^Open this URL with your phone$/gm) ?? []).length,
           2,
         );
         assert.doesNotMatch(session.diagnostics(), /QR_REFRESHED|CONNECTED|RECEIVED/);
@@ -520,7 +519,7 @@ test('real Go receiver: server idle expiry silently renews the QR and pairing in
     session.expireIdle();
     await renewed;
     assert.equal(
-      (session.diagnostics().match(/^Scan this QR code with your phone’s camera$/gm) ?? []).length,
+      (session.diagnostics().match(/^Open this URL with your phone$/gm) ?? []).length,
       2,
     );
     assert.equal((session.diagnostics().match(/^\[EXPIRES\] /gm) ?? []).length, 2);
