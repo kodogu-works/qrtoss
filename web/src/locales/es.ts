@@ -3,10 +3,10 @@ import type { ErrorMessages, Messages } from './types';
 export const label = 'Español';
 
 export const messages: Messages = {
-  helpTitle: 'Cómo usar',
+  helpTitle: 'Cómo funciona',
   helpConnectTitle: 'Conecta tu teléfono',
   helpConnectBody:
-    'Escanea el código QR de conexión de esta pantalla con la cámara habitual de tu teléfono. Abre el enlace a la página de envío.',
+    'Escanea el código QR de conexión de esta pantalla con la cámara de tu teléfono y abre el enlace a la página de envío.',
   helpScanTitle: 'Escanea el código QR que quieres enviar',
   helpScanBody:
     'En la página de envío, escanea el código QR cuyo contenido quieres enviar a este dispositivo.',
@@ -92,7 +92,7 @@ export const messages: Messages = {
   scanAgain: 'Volver a escanear',
   stop: 'Detener cámara',
   send: 'Enviar al receptor',
-  retry: 'Comprobar entrega de nuevo',
+  retry: 'Volver a comprobar la entrega',
   copy: 'Copiar',
   copied: 'Copiado',
   manualCopy: 'Selecciona el texto y cópialo manualmente.',
@@ -112,7 +112,7 @@ export const messages: Messages = {
   language: 'Idioma',
   secureContext: 'Abre esta página por HTTPS para iniciar una conexión segura.',
   cancelledAuto:
-    'Se canceló la apertura automática mientras la página estaba oculta. Puedes abrir el contenido manualmente.',
+    'Se canceló la apertura automática mientras la página estaba oculta. Puedes abrirlo con el botón.',
   cameraHelp: 'La cámara se inicia automáticamente. No se envía nada hasta que confirmes.',
   version: 'Versión',
 };
@@ -120,7 +120,7 @@ export const messages: Messages = {
 export const errorMessages: ErrorMessages = {
   PAIR_UNAVAILABLE: 'Este código QR de conexión no está disponible.',
   PAIR_EXPIRED: 'El código QR de conexión ha caducado.',
-  PAIR_TIMEOUT: 'La verificación agotó el tiempo.',
+  PAIR_TIMEOUT: 'Se agotó el tiempo de verificación.',
   READY_TIMEOUT: 'No se pudo completar la conexión.',
   PEER_BUSY: 'Otro dispositivo se está conectando. Inténtalo más tarde.',
   DUPLICATE_ROLE: 'Esta conexión ya está en uso.',
@@ -128,15 +128,16 @@ export const errorMessages: ErrorMessages = {
   SESSION_EXPIRED: 'La sesión ha caducado. Usa un nuevo código QR.',
   PEER_CLOSED: 'El otro dispositivo se desconectó.',
   NETWORK_DISCONNECTED: 'Desconectado. Comprueba la conexión.',
-  PROTOCOL_ERROR: 'Se finalizó la conexión porque falló la verificación.',
+  PROTOCOL_ERROR: 'Se cerró la conexión por un error de comunicación.',
   MESSAGE_TOO_LARGE: 'El mensaje es demasiado grande.',
   RATE_LIMITED: 'Demasiadas solicitudes. Inténtalo más tarde.',
   CAPACITY: 'El servicio está ocupado. Inténtalo más tarde.',
-  SLOW_PEER: 'El otro dispositivo no pudo seguir recibiendo.',
-  SERVER_SHUTDOWN: 'El servicio se está reiniciando.',
+  SLOW_PEER:
+    'No se pudo continuar la transferencia de datos al otro dispositivo. Vuelve a conectar.',
+  SERVER_SHUTDOWN: 'El servicio se está reiniciando. Vuelve a conectar en unos momentos.',
   SERVER_ERROR: 'No se pudo continuar la conexión.',
-  ORIGIN_DENIED: 'No se pudo verificar el origen del servicio.',
-  VERSION_UNSUPPORTED: 'Actualiza la página.',
+  ORIGIN_DENIED: 'No se pudo verificar el origen de la página.',
+  VERSION_UNSUPPORTED: 'Esta versión no es compatible. Recarga la página.',
   PAIR_LINK_INVALID: 'Información de conexión incorrecta. Escanea un nuevo código QR.',
   CRYPTO_UNAVAILABLE:
     'Este navegador no puede iniciar una conexión segura. Usa HTTPS y un navegador actual.',
@@ -144,14 +145,16 @@ export const errorMessages: ErrorMessages = {
   CAMERA_DENIED:
     'No se concedió permiso de cámara. Permítelo en los ajustes del navegador y reinténtalo.',
   CAMERA_NOT_FOUND: 'No hay ninguna cámara disponible.',
-  CAMERA_BUSY: 'La cámara no está disponible. Comprueba otras aplicaciones.',
+  CAMERA_BUSY:
+    'No se pudo iniciar la cámara. Comprueba que ninguna otra aplicación la esté usando.',
   CAMERA_ERROR: 'No se pudo iniciar el escaneo QR.',
-  CONTENT_EMPTY: 'El código QR no contiene texto transferible.',
-  CONTENT_TOO_LARGE: 'El contenido supera el límite de tamaño.',
+  CONTENT_EMPTY: 'Este código QR no contiene texto que se pueda enviar.',
+  CONTENT_TOO_LARGE: 'El contenido escaneado es demasiado grande para enviarlo.',
   CONTENT_INVALID: 'No se pudo procesar el texto escaneado.',
   CONTENT_UNSUPPORTED:
     'El formato del receptor no admite este contenido. Reinicia el comando con --jsonl y vuelve a conectar.',
-  ACK_TIMEOUT: 'No se pudo confirmar la recepción. Esto no significa que no se haya recibido.',
+  ACK_TIMEOUT: 'No se pudo confirmar la entrega. Es posible que el contenido se haya recibido.',
   FINAL_ACK_TIMEOUT: 'Contenido recibido. Usa el botón para abrirlo.',
-  TRANSFER_LIMIT: 'Vuelve a conectar con un nuevo código QR.',
+  TRANSFER_LIMIT:
+    'Esta conexión alcanzó el límite de envíos. Vuelve a conectar con un nuevo código QR.',
 };

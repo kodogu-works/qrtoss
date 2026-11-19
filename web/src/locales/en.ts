@@ -4,7 +4,7 @@ export const messages = {
   helpTitle: 'How to use',
   helpConnectTitle: 'Connect your phone',
   helpConnectBody:
-    'Scan the connection QR code on this screen with your phone’s standard camera. Open the link to the send page.',
+    'Scan the connection QR code on this screen with your phone’s camera, then open the link to go to the send page.',
   helpScanTitle: 'Scan the QR code you want to send',
   helpScanBody: 'On the send page, scan the QR code whose content you want to send to this device.',
   helpSendTitle: 'Review and send',
@@ -104,7 +104,7 @@ export const messages = {
   language: 'Language',
   secureContext: 'Open this page over HTTPS to start a secure connection.',
   cancelledAuto:
-    'Automatic opening was cancelled while this page was hidden. You can open the content manually.',
+    'Automatic opening was cancelled while this page was hidden. Use the button to open it.',
   cameraHelp: 'The camera starts automatically. Nothing is sent until you confirm.',
   version: 'Version',
 };
@@ -120,15 +120,15 @@ export const errorMessages = {
   SESSION_EXPIRED: 'Session expired. Use a new QR code.',
   PEER_CLOSED: 'The other device disconnected.',
   NETWORK_DISCONNECTED: 'Disconnected. Check your connection.',
-  PROTOCOL_ERROR: 'Connection ended because verification failed.',
+  PROTOCOL_ERROR: 'The connection was closed due to a communication error.',
   MESSAGE_TOO_LARGE: 'The message is too large.',
   RATE_LIMITED: 'Too many requests. Please try again later.',
   CAPACITY: 'The service is busy. Please try again later.',
-  SLOW_PEER: 'The other device could not keep up.',
-  SERVER_SHUTDOWN: 'The service is restarting.',
+  SLOW_PEER: 'Data could not be forwarded to the other device. Please reconnect.',
+  SERVER_SHUTDOWN: 'The service is restarting. Please reconnect in a moment.',
   SERVER_ERROR: 'The connection could not continue.',
-  ORIGIN_DENIED: 'The service origin could not be verified.',
-  VERSION_UNSUPPORTED: 'Please reload the page.',
+  ORIGIN_DENIED: 'The page origin could not be verified.',
+  VERSION_UNSUPPORTED: 'This version is not supported. Please reload the page.',
   PAIR_LINK_INVALID: 'Invalid pairing information. Scan a new connection QR code.',
   CRYPTO_UNAVAILABLE:
     'This browser cannot start a secure connection. Use HTTPS and a current browser.',
@@ -136,14 +136,14 @@ export const errorMessages = {
   CAMERA_DENIED:
     'Camera permission was not granted. Allow camera access in your browser settings, then try again.',
   CAMERA_NOT_FOUND: 'No camera is available.',
-  CAMERA_BUSY: 'The camera is unavailable. Check other apps.',
+  CAMERA_BUSY: 'The camera could not be started. Make sure no other app is using it.',
   CAMERA_ERROR: 'QR scanning could not be started.',
-  CONTENT_EMPTY: 'The QR code contains no transferable text.',
-  CONTENT_TOO_LARGE: 'The scanned content exceeds the size limit.',
+  CONTENT_EMPTY: 'This QR code contains no text that can be sent.',
+  CONTENT_TOO_LARGE: 'The scanned content is too large to send.',
   CONTENT_INVALID: 'The scanned text could not be processed.',
   CONTENT_UNSUPPORTED:
     'The receiver’s output format cannot handle this content. Restart the command with --jsonl and reconnect.',
-  ACK_TIMEOUT: 'Receipt could not be confirmed. This does not mean the content was not received.',
+  ACK_TIMEOUT: 'Delivery could not be confirmed. The content may still have been received.',
   FINAL_ACK_TIMEOUT: 'Content received. Use the button to open it.',
-  TRANSFER_LIMIT: 'Reconnect using a new QR code.',
+  TRANSFER_LIMIT: 'This connection has reached its transfer limit. Reconnect using a new QR code.',
 };
