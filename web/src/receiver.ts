@@ -316,7 +316,9 @@ export function startReceiver(paths: AppPaths): void {
   }
   el('receiver-help').addEventListener('click', () => {
     session?.activity();
-    el<HTMLDialogElement>('receiver-help-dialog').showModal();
+    const dialog = el<HTMLDialogElement>('receiver-help-dialog');
+    dialog.showModal();
+    dialog.scrollTop = 0;
   });
   el<HTMLSelectElement>('language').addEventListener('change', (event) => {
     language = (event.target as HTMLSelectElement).value as Language;

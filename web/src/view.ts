@@ -116,14 +116,14 @@ export function mountPage(sender: boolean, paths: AppPaths): void {
 </section>
 ${marketing()}
 <dialog id="receiver-help-dialog" class="help-dialog" aria-labelledby="receiver-help-title">
-<h2 id="receiver-help-title" data-i18n="helpTitle"></h2>
+<h2 id="receiver-help-title" data-i18n="helpTitle" tabindex="-1" autofocus></h2>
 <ol class="help-steps">
 ${['Connect', 'Scan', 'Send'].map((step) => `<li><h3 data-i18n="help${step}Title"></h3><p data-i18n="help${step}Body"></p></li>`).join('')}
 </ol>
 <p class="hint" data-i18n="helpResult"></p>
 <p class="hint" data-i18n="helpTerminal"></p>
 <pre class="help-command"><code id="help-cli-command"></code></pre>
-<form method="dialog" class="actions"><button class="button secondary" data-i18n="helpClose" autofocus></button></form>
+<form method="dialog" class="actions"><button class="button secondary" data-i18n="helpClose"></button></form>
 </dialog>
 </main>`;
   const senderPage = `
