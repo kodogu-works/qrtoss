@@ -104,8 +104,8 @@ func Parse(args []string, env Env) (Options, error) {
 	if !oneOf(o.Format, "text", "jsonl") || !oneOf(o.QR, "auto", "compact", "full", "off") || !oneOf(o.Color, "auto", "always", "never") || !oneOf(o.Lang, "auto", "ja", "en", "es") {
 		return o, errors.New("invalid option value")
 	}
-	if o.QR == "off" && !o.PairingURL {
-		return o, errors.New("--qr off requires --pairing-url")
+	if o.QR == "off" {
+		o.PairingURL = true
 	}
 	var e error
 	o.Server, e = Origin(o.Server)

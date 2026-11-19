@@ -250,13 +250,20 @@ func (s *receiver) displayPairing(url string) error {
 
 func (s *receiver) showPairing() error {
 	pairing := s.pairing()
-	if err := s.terminal.event("WAITING"); err != nil {
+	err := s.terminal.pairingWithIntro(pairing.url, func() error {
+		if err := s.terminal.event("WAITING"); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(s.terminal.out, "[EXPIRES] %s\n", pairing.deadline.Local().Format("2006-01-02 15:04:05 (MST)"))
+		return err
+	})
+	if err != nil {
+		if err.Error() == "DISPLAY_ERROR" {
+			return fail(2, "DISPLAY_ERROR")
+		}
 		return fail(5, "IO_ERROR")
 	}
-	if _, err := fmt.Fprintf(s.terminal.out, "[EXPIRES] %s\n", pairing.deadline.Local().Format("2006-01-02 15:04:05 (MST)")); err != nil {
-		return fail(5, "IO_ERROR")
-	}
-	return s.displayPairing(pairing.url)
+	return nil
 }
 
 func (s *receiver) touch() error {

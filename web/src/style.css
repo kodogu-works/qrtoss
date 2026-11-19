@@ -485,7 +485,8 @@ footer {
   .header-actions {
     gap: 12px;
   }
-  .github-link > span {
+  .github-link > span,
+  .help-button > span {
     display: none;
   }
   .workspace {
@@ -770,6 +771,7 @@ footer {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-width: 44px;
   min-height: 44px;
   padding: 0;
   border: 0;
@@ -808,6 +810,10 @@ footer {
 .help-steps p {
   margin: 0;
   color: var(--muted);
+}
+.help-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .help-dialog .actions {
   justify-content: flex-end;

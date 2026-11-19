@@ -15,6 +15,7 @@ export const messages: Messages = {
     'Comprueba el contenido en tu teléfono y pulsa «Enviar» para enviarlo a este dispositivo.',
   helpResult:
     'Las URL de páginas web se abren automáticamente en este dispositivo. El resto del contenido se muestra en esta pantalla.',
+  helpTerminal: 'Para usar qrtoss en una terminal de Linux o macOS, ejecuta el siguiente comando.',
   helpClose: 'Cerrar',
 
   senderPrompt: 'Escanea el código QR que quieres enviar',

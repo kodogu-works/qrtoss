@@ -14,7 +14,7 @@
 
 スマホで読み取ったQRコードの内容を、別の端末のブラウザやターミナルへ転送します。一時的な接続用QRコードをスマホの標準カメラで読み、送信ページで対象QRを読み取って内容を確認し、送信します。アカウント、スマホへのアプリ導入、同じWi-Fiへの接続は不要です。
 
-ブラウザの受信側は原文を表示するか、HTTP(S) URLを同じタブで開きます。Go製CLIは**1件だけ受信して標準出力へ書き出し、終了**します。接続用QRコード・有効期限・エラーは標準エラー出力へ分離し、通常の接続・受領ログは表示しません。Web画面は日本語・英語・スペイン語に対応し、CLIの表示は英語です。
+ブラウザの受信側は原文を表示するか、HTTP(S) URLを同じタブで開きます。Go製CLIは**受信した文字列（URLなど）を標準出力へ書き出して終了**します。接続用QRコード・有効期限・エラーは標準エラー出力へ分離し、通常の接続・受領ログは表示しません。Web画面は日本語・英語・スペイン語に対応し、CLIの表示は英語です。
 
 ## ローカルで起動
 
@@ -66,7 +66,29 @@ Cloudflare Workers と Durable Objects でも、同じブラウザ・CLI の通�
 
 ## CLI
 
-単体の実行ファイルをビルドします。
+ビルドせずにCLIを試せます（macOS/Linux、arm64/amd64対応）。
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh
+```
+
+CLIのオプションは`sh -s --`の後ろに指定します。
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --timeout 120
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr full
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr off
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --jsonl > received.jsonl
+```
+
+`--qr off`ではQRの代わりに接続URLを表示します。ランチャーは環境に合う実行ファイルをダウンロードしてキャッシュし、CLIへオプションを渡します。配信元のスクリプトを実行するため、信頼できる場合に利用してください。自動化ではインストール済みCLIを使うか、スクリプトの取得成功を確認してから実行します。
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh -o qrtoss-run.sh &&
+  sh qrtoss-run.sh --timeout 120
+```
+
+ソースから単体の実行ファイルをビルドする場合：
 
 ```sh
 cd cli
@@ -87,7 +109,7 @@ text形式では受信文字列を変更せず、末尾にLFを付けます。�
 
 接続用QRの有効期限は60秒です。受信前の期限切れではQRを更新し、通信断では再ペアリングできます。`--timeout`は出力可能な1件を受け付けるまでの待機期限で、遅い標準出力への書き込み時間は制限しません。出力成功後の受領確認・終了処理は最大2秒です。確認の配送が不確定なだけでは、出力成功を失敗へ変更しません。厳密なオプションと終了コードは[仕様書](docs/spec.md#14-cli受信クライアント)に記載しています。
 
-端末には十分な横幅を確保してください。compact表示が崩れる場合は`--qr full`を試せます。`--pairing-url`は秘密を含む接続用URLの表示を明示的に許可します。標準エラーが非TTYの場合は`--qr off --pairing-url`を指定します。接続用URLは他人に渡さず、受信内容を取得するときは標準出力と標準エラーを結合しないでください。
+端末には十分な横幅を確保してください。compact表示が崩れる場合は`--qr full`を試せます。`--pairing-url`は秘密を含む接続用URLの表示を明示的に許可します。`--qr off`はQRの描画を止め、`--pairing-url`を自動的に有効にします。標準エラーが非TTYの場合も利用できます。接続用URLは他人に渡さず、受信内容を取得するときは標準出力と標準エラーを結合しないでください。
 
 ## 開発と検証
 

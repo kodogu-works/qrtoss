@@ -36,7 +36,11 @@ try {
     ...(configPath ? [configPath] : []),
   ]);
 
-  await run('npm', ['run', 'build:web']);
+  const webConfig = JSON.parse(await readFile(configPath ?? 'wrangler.jsonc', 'utf8'));
+  await run('npm', ['run', 'build:web'], {
+    ...process.env,
+    PUBLIC_ORIGIN: webConfig.vars.PUBLIC_ORIGIN,
+  });
   if (action === 'deploy') {
     const config = JSON.parse(await readFile(configPath ?? 'wrangler.jsonc', 'utf8'));
     const { version } = JSON.parse(await readFile('package.json', 'utf8'));

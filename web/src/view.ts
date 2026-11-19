@@ -48,7 +48,7 @@ function header(paths: AppPaths, sender: boolean): string {
 <span class="brand-symbol">${icon('arrow')}</span>qrtoss<span class="brand-dot">.</span>
 </a>
 <div class="header-actions">
-${sender ? '' : `<button id="receiver-help" class="help-button" aria-haspopup="dialog" aria-controls="receiver-help-dialog">${icon('help')}<span data-i18n="helpTitle"></span></button>`}
+${sender ? '' : `<button id="receiver-help" class="help-button" data-i18n-aria-label="helpTitle" aria-haspopup="dialog" aria-controls="receiver-help-dialog">${icon('help')}<span data-i18n="helpTitle"></span></button>`}
 <a class="github-link" href="https://github.com/kodogu-works/qrtoss" target="_blank" rel="noopener noreferrer" data-i18n-aria-label="githubLabel">
 ${icon('github')}<span>GitHub</span>
 </a>
@@ -121,6 +121,8 @@ ${marketing()}
 ${['Connect', 'Scan', 'Send'].map((step) => `<li><h3 data-i18n="help${step}Title"></h3><p data-i18n="help${step}Body"></p></li>`).join('')}
 </ol>
 <p class="hint" data-i18n="helpResult"></p>
+<p class="hint" data-i18n="helpTerminal"></p>
+<pre class="help-command"><code id="help-cli-command"></code></pre>
 <form method="dialog" class="actions"><button class="button secondary" data-i18n="helpClose" autofocus></button></form>
 </dialog>
 </main>`;
@@ -156,6 +158,10 @@ ${['Connect', 'Scan', 'Send'].map((step) => `<li><h3 data-i18n="help${step}Title
 ${marketing()}
 </main>`;
   root.innerHTML = `<div class="shell">${header(paths, sender)}${sender ? senderPage : receiver}${footer()}</div>`;
+  if (!sender) {
+    const origin = __PUBLIC_ORIGIN__ || window.location.origin;
+    el('help-cli-command').textContent = `curl -fsSL ${new URL('/run.sh', origin).href} | sh`;
+  }
 }
 export function renderChrome(
   language: Language,

@@ -13,6 +13,7 @@ export const messages: Messages = {
   helpSendBody: 'スマホで内容を確認して「送信」を押すと、この端末に届きます。',
   helpResult:
     'WebページのURLは、この端末で自動で開きます。それ以外の内容は、この画面に表示します。',
+  helpTerminal: 'LinuxやmacOSのターミナル上で使うには、次のコマンドを実行してください。',
   helpClose: '閉じる',
 
   senderPrompt: '送信するQRコードを読み取ってください',

@@ -1,3 +1,5 @@
 /// <reference types="vite/client" />
 declare const __APP_VERSION__: string;
 declare const __SOURCE_COMMIT__: string;
+
+declare const __PUBLIC_ORIGIN__: string;

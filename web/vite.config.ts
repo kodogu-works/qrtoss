@@ -20,7 +20,11 @@ if (commit === 'unknown')
 
 export default defineConfig({
   base,
-  define: { __APP_VERSION__: JSON.stringify(version), __SOURCE_COMMIT__: JSON.stringify(commit) },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __SOURCE_COMMIT__: JSON.stringify(commit),
+    __PUBLIC_ORIGIN__: JSON.stringify(process.env.PUBLIC_ORIGIN ?? ''),
+  },
   root: resolve(import.meta.dirname),
   build: {
     outDir: resolve(import.meta.dirname, '../dist/web'),

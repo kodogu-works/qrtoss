@@ -15,7 +15,7 @@ var messages = map[string]string{
 	"ACK_UNCONFIRMED": "Output succeeded; receipt delivery could not be confirmed.",
 	"ERROR":           "Could not complete the operation.",
 	"ARGUMENT_ERROR":  "Invalid arguments or public HTTPS origin.",
-	"DISPLAY_ERROR":   "Use a compatible terminal (80 columns × 34 rows recommended) or --qr off --pairing-url. Try --qr full if the QR is distorted.",
+	"DISPLAY_ERROR":   "Use a compatible terminal (80 columns × 34 rows recommended) or --qr off. Try --qr full if the QR is distorted.",
 	"WARNING":         "Increase terminal height to show the entire QR. If distorted, try --qr full.",
 	"TIMEOUT":         "Receive waiting time expired.",
 	"PROTOCOL_ERROR":  "The secure protocol validation failed.",
@@ -29,6 +29,7 @@ type terminal struct {
 	options         Options
 	tty, ansi, utf8 bool
 	width, height   int
+	displayError    string
 }
 
 func newTerminal(w io.Writer, o Options, env Env) (*terminal, error) {
@@ -68,11 +69,18 @@ func (t *terminal) event(k string) error {
 		return nil
 	}
 	if k == "WAITING" {
-		_, err := fmt.Fprintln(t.out, "Scan this QR code with your phone’s camera")
+		message := "Scan this QR code with your phone’s camera"
+		if t.options.QR == "off" {
+			message = "Open this URL with your phone"
+		}
+		_, err := fmt.Fprintln(t.out, message)
 		return err
 	}
 	m := messages
 	s := m[k]
+	if k == "DISPLAY_ERROR" && t.displayError != "" {
+		s = t.displayError
+	}
 	if s == "" {
 		s = m["ERROR"]
 	}
@@ -80,6 +88,19 @@ func (t *terminal) event(k string) error {
 	return e
 }
 func (t *terminal) pairing(s string) error {
+	return t.pairingWithIntro(s, nil)
+}
+
+func (t *terminal) pairingWithIntro(s string, intro func() error) error {
+	t.displayError = ""
+	showIntro := func() error {
+		if intro != nil {
+			err := intro()
+			intro = nil
+			return err
+		}
+		return nil
+	}
 	if f, ok := t.out.(*os.File); ok && t.tty {
 		t.width, t.height, _ = term.GetSize(int(f.Fd()))
 	}
@@ -105,9 +126,15 @@ func (t *terminal) pairing(s string) error {
 		}
 		if mode == "off" || t.width < width {
 			if !t.options.PairingURL {
+				if mode != "off" {
+					t.displayError = fmt.Sprintf("Terminal too narrow for --qr %s: need %d columns × %d rows; current terminal is %d columns × %d rows. Increase terminal width or use --qr off.", mode, width, height, t.width, t.height)
+				}
 				return fmt.Errorf("DISPLAY_ERROR")
 			}
 		} else {
+			if e = showIntro(); e != nil {
+				return e
+			}
 			if t.height < height {
 				if e = t.event("WARNING"); e != nil {
 					return e
@@ -117,6 +144,9 @@ func (t *terminal) pairing(s string) error {
 				return e
 			}
 		}
+	}
+	if err := showIntro(); err != nil {
+		return err
 	}
 	if t.options.PairingURL {
 		_, e := fmt.Fprintln(t.out, s)
@@ -220,5 +250,5 @@ func renderQR(m [][]bool, mode string, ansi, fixed bool) string {
 func help(_ string) string {
 	return "Receive one QR value, write it to stdout, then exit. Pairing instructions and errors use stderr.\n\n" +
 		"qrtoss [--timeout SECONDS] [--format text|jsonl] [--jsonl]\n       [--qr auto|compact|full|off] [--pairing-url]\n       [--color auto|always|never] [--server URL]\nqrtoss --help\nqrtoss --version\n\n" +
-		"Use an 80×34 or larger terminal. Try --qr full if the QR is distorted. --pairing-url explicitly exposes the secret URL on stderr; --qr off --pairing-url works without a TTY. --jsonl supports newlines and control characters. Do not combine streams with 2>&1 when capturing data. All CLI messages are in English.\n"
+		"Use an 80×34 or larger terminal. Try --qr full if the QR is distorted. --pairing-url explicitly exposes the secret URL on stderr; --qr off automatically enables --pairing-url and works without a TTY. --jsonl supports newlines and control characters. Do not combine streams with 2>&1 when capturing data. All CLI messages are in English.\n"
 }

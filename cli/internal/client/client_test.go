@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -24,7 +25,7 @@ func TestOptions(t *testing.T) {
 			t.Errorf("%v: %v", args, e)
 		}
 	}
-	bad := [][]string{{"--once"}, {"-timeout", "1"}, {"arg"}, {"--timeout", "01"}, {"--timeout", "-1"}, {"--timeout", "2147483648"}, {"--timeout", "1.0"}, {"--timeout", "+1"}, {"--timeout"}, {"--timeout", "1", "--timeout", "2"}, {"--jsonl", "--format", "text"}, {"--format=text", "--jsonl"}, {"--qr=off"}, {"--pairing-url=true"}, {"--server", "http://example.org"}, {"--server", "https://a.example/path"}, {"--server", "https://a.example?"}, {"--server", "https://a.example#"}, {"--server", "https://a.example."}, {"--server", "https://user@a.example"}}
+	bad := [][]string{{"--once"}, {"-timeout", "1"}, {"arg"}, {"--timeout", "01"}, {"--timeout", "-1"}, {"--timeout", "2147483648"}, {"--timeout", "1.0"}, {"--timeout", "+1"}, {"--timeout"}, {"--timeout", "1", "--timeout", "2"}, {"--jsonl", "--format", "text"}, {"--format=text", "--jsonl"}, {"--pairing-url=true"}, {"--server", "http://example.org"}, {"--server", "https://a.example/path"}, {"--server", "https://a.example?"}, {"--server", "https://a.example#"}, {"--server", "https://a.example."}, {"--server", "https://user@a.example"}}
 	for _, args := range bad {
 		if _, e := Parse(args, env); e == nil {
 			t.Errorf("accepted %v", args)
@@ -38,6 +39,29 @@ func TestOptions(t *testing.T) {
 		if got := language("auto", environment(map[string]string{"LANG": locale})); got != "en" {
 			t.Errorf("locale %q: %q", locale, got)
 		}
+	}
+}
+
+func TestQROffEnablesPairingURL(t *testing.T) {
+	for _, args := range [][]string{{"--qr", "off"}, {"--qr=off"}, {"--qr", "off", "--pairing-url"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			env := environment(map[string]string{"TERM": "dumb"})
+			options, err := Parse(args, env)
+			if err != nil || !options.PairingURL {
+				t.Fatalf("expected pairing URL enabled: %+v, %v", options, err)
+			}
+			var out bytes.Buffer
+			terminal, err := newTerminal(&out, options, env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := terminal.pairing("https://example.org/send"); err != nil {
+				t.Fatal(err)
+			}
+			if out.String() != "https://example.org/send\n" {
+				t.Fatalf("unexpected non-TTY output: %q", out.String())
+			}
+		})
 	}
 }
 
@@ -400,8 +424,55 @@ func TestReadablePairingExpiry(t *testing.T) {
 	if err := fixture.session.showPairing(); err != nil {
 		t.Fatal(err)
 	}
-	expected := "Scan this QR code with your phone’s camera\n[EXPIRES] 2026-11-18 10:28:05 (CST)\nhttps://example.org/send\n"
+	expected := "Open this URL with your phone\n[EXPIRES] 2026-11-18 10:28:05 (CST)\nhttps://example.org/send\n"
 	if fixture.diagnostics.String() != expected {
 		t.Fatalf("pairing display: %q", fixture.diagnostics.String())
+	}
+}
+
+func TestPairingTooNarrow(t *testing.T) {
+	for _, mode := range []string{"compact", "full"} {
+		for _, pairingURL := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/url=%t", mode, pairingURL), func(t *testing.T) {
+				fixture := newReceiverFixture(t, io.Discard)
+				terminal := fixture.session.terminal
+				terminal.options = Options{QR: mode, PairingURL: pairingURL}
+				terminal.env = environment(map[string]string{"TERM": "xterm"})
+				terminal.tty = true
+				terminal.width, terminal.height = 1, 100
+				err := fixture.session.showPairing()
+				if pairingURL {
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(fixture.diagnostics.String(), "[EXPIRES]") || !strings.Contains(fixture.diagnostics.String(), fixture.session.pairing().url) {
+						t.Fatalf("missing pairing information: %q", fixture.diagnostics.String())
+					}
+					return
+				}
+				if err == nil || err.Error() != "DISPLAY_ERROR" {
+					t.Fatalf("expected DISPLAY_ERROR, got %v", err)
+				}
+				if fixture.diagnostics.Len() != 0 {
+					t.Fatalf("unexpected pairing instructions: %q", fixture.diagnostics.String())
+				}
+				matrix, err := pairingMatrix(fixture.session.pairing().url)
+				if err != nil {
+					t.Fatal(err)
+				}
+				width, height := len(matrix), (len(matrix)+1)/2
+				if mode == "full" {
+					width, height = 2*len(matrix), len(matrix)
+				}
+				if err := terminal.event("DISPLAY_ERROR"); err != nil {
+					t.Fatal(err)
+				}
+				want := fmt.Sprintf("need %d columns × %d rows", width, height)
+				output := fixture.diagnostics.String()
+				if !strings.Contains(output, want) || !strings.Contains(output, "current terminal is 1 columns × 100 rows") || strings.Contains(output, "80 columns × 34 rows") || strings.Contains(output, "Try --qr full") {
+					t.Fatalf("incorrect size diagnostic: %q", output)
+				}
+			})
+		}
 	}
 }

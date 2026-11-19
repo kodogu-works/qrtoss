@@ -14,7 +14,7 @@
 
 Send a QR code's contents from your phone to another browser or a terminal. Connect by scanning a temporary QR code, scan the code you want to transfer, review it, and send. No account, installed phone app, or shared Wi-Fi is needed.
 
-The receiver can display the original text or open HTTP(S) URLs in the same tab. The Go CLI writes **one received item to stdout, then exits**. Connection QR codes, expiry times, and diagnostics go to stderr; routine connection and receipt logs are suppressed. The web interface supports English, Japanese, and Spanish; CLI messages are in English.
+The receiver can display the original text or open HTTP(S) URLs in the same tab. The Go CLI writes **received text (such as a URL) to stdout, then exits**. Connection QR codes, expiry times, and diagnostics go to stderr; routine connection and receipt logs are suppressed. The web interface supports English, Japanese, and Spanish; CLI messages are in English.
 
 ## Run locally
 
@@ -66,7 +66,29 @@ For `workers.dev`, deploy without editing the config: `PUBLIC_ORIGIN=https://qrt
 
 ## CLI
 
-Build the standalone executable:
+Try the CLI without building it (macOS/Linux, arm64/amd64):
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh
+```
+
+Pass CLI options after `sh -s --`:
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --timeout 120
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr full
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr off
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --jsonl > received.jsonl
+```
+
+`--qr off` prints the connection URL instead of a QR. The launcher downloads and caches the binary for your platform and forwards CLI options. This executes a script from the distribution service; use it only if you trust that service. For automation, prefer an installed CLI, or save the script and check that the download succeeded before running it:
+
+```sh
+curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh -o qrtoss-run.sh &&
+  sh qrtoss-run.sh --timeout 120
+```
+
+Build the standalone executable from source:
 
 ```sh
 cd cli
@@ -87,7 +109,7 @@ Text output is the unmodified received string followed by LF. Text containing co
 
 Connection QRs expire after 60 seconds. Before receiving an item, the CLI refreshes expired pairing information and can recover from connection loss. `--timeout` limits the wait until an output-capable item is accepted, not a slow stdout write. After output, delivery confirmation and shutdown take at most two seconds; uncertain acknowledgement delivery does not turn successful output into an error. See [the specification](docs/spec.md#14-cli受信クライアント) for exact options and exit codes.
 
-Use an adequately wide terminal; `--qr full` can help if compact QR characters look distorted. `--pairing-url` explicitly permits printing the secret connection URL. For non-TTY stderr, use `--qr off --pairing-url`. Keep this URL private and avoid combining stdout and stderr when capturing output.
+Use an adequately wide terminal; `--qr full` can help if compact QR characters look distorted. `--pairing-url` explicitly permits printing the secret connection URL. Use `--qr off` to disable QR rendering and automatically enable `--pairing-url`; this also works with non-TTY stderr. Keep this URL private and avoid combining stdout and stderr when capturing output.
 
 ## Development and verification
 
