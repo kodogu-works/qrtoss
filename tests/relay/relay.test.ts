@@ -108,8 +108,8 @@ test('HTTP routes enforce exact origin, bounded schema and safe headers', async 
   assert.equal(room.receiverCap.length, 43);
   assert.equal(room.senderJoinCap.length, 43);
   assert.notEqual(room.receiverCap, room.senderJoinCap);
-  assert.ok(room.pairingExpiresAt - room.serverTime >= 299990);
-  assert.ok(room.pairingExpiresAt - room.serverTime <= 300000);
+  assert.ok(room.pairingExpiresAt - room.serverTime >= 59990);
+  assert.ok(room.pairingExpiresAt - room.serverTime <= 60000);
   assert.deepEqual(await (await fetch(url + '/healthz')).json(), { status: 'ok' });
   assert.deepEqual(await (await fetch(url + '/readyz')).json(), { status: 'ready' });
   assert.equal((await fetch(url + '/missing')).status, 404);
@@ -183,7 +183,7 @@ test('pairing deadlines use monotonic time and do not let late auth revive a roo
   });
   t.after(() => relay.close());
   const room = (await (await create()).json()) as Message;
-  clock = 300000;
+  clock = 60000;
   const r = new Peer(url);
   await r.open();
   r.send('auth', { role: 'receiver', room: room.room, cap: room.receiverCap });
@@ -198,11 +198,11 @@ test('committed QR expires independently from active session; heartbeat does not
   const room = (await (await create()).json()) as Message;
   const { receiver, sender, peer } = await pair(url, room);
   // Advance in heartbeat-sized increments so only idle, not liveness, expires.
-  for (let step = 1; step <= 121; step++) {
+  for (let step = 1; step <= 9; step++) {
     clock = step * 15000;
     receiver.send('hb.ping', { id: step });
     sender.send('hb.ping', { id: step });
-    if (step < 120) {
+    if (step < 8) {
       await receiver.next('hb.pong');
       await sender.next('hb.pong');
     } else break;
@@ -471,9 +471,9 @@ test('commit before the QR deadline permits ready exchange after the deadline', 
   const { relay, url, create } = await setup({ publicOrigin: ORIGIN, now: () => clock });
   t.after(() => relay.close());
   const room = (await (await create()).json()) as Message;
-  clock = 299999;
+  clock = 59999;
   const { receiver, sender, peer, cipher } = await pair(url, room, false);
-  clock = 300001;
+  clock = 60001;
   await relay.sweep();
   cipher(sender, 's2r', '0');
   await receiver.next('cipher');

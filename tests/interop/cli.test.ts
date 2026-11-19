@@ -148,7 +148,7 @@ async function start(
       // Advance after room creation and before either WebSocket is accepted, so the
       // fake jump cannot accidentally trigger the unauthenticated-socket timeout.
       res.once('finish', () => {
-        clock = 299500;
+        clock = 59500;
       });
     }
     relay.server.emit('request', req, res);
@@ -160,7 +160,7 @@ async function start(
         },
         async receiverMessage(message, forward) {
           // Shorten only the advertised remaining time so these regressions
-          // exercise the real CLI without waiting 10 seconds or 30 minutes.
+          // exercise the real CLI without waiting 10 seconds or 120 seconds.
           if (scenario === 'ready' && message.type === 'pair.committed') {
             forward({ ...message, readyExpiresAt: message.serverTime + 250 });
             return;
@@ -189,7 +189,7 @@ async function start(
             }
           }
           if (scenario === 'commit' && message.type === 'pair.committed') {
-            clock = 300001;
+            clock = 60001;
             await relay.sweep();
             await new Promise((resolve) => setTimeout(resolve, 750));
           }
@@ -275,7 +275,7 @@ async function start(
       assert.doesNotMatch(diagnostics, /PROTOCOL_ERROR|QR_REFRESHED/);
       const renewed = pairingUrl(child);
       serverExpired = true;
-      clock = 300001;
+      clock = 60001;
       await relay.sweep();
       sender!.close();
       proof = await prove(await renewed);
@@ -310,7 +310,7 @@ async function start(
       expireIdle() {
         assert.equal(scenario, 'idle');
         serverExpired = true;
-        clock += 1800000;
+        clock += 120000;
         void relay.sweep();
       },
       async close() {

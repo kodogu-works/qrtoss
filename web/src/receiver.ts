@@ -18,6 +18,7 @@ export function startReceiver(paths: AppPaths): void {
   let manualCopy = false;
   let connectionGeneration = 0;
   let qrConsumed = false;
+  let qrBlurred = false;
   type Receipt = {
     id: string;
     hash: string;
@@ -46,8 +47,13 @@ export function startReceiver(paths: AppPaths): void {
     status = key;
     render();
   }
+  function canRegenerateQR(): boolean {
+    return ['PAIR_EXPIRED', 'SESSION_EXPIRED', 'NETWORK_DISCONNECTED', 'SERVER_SHUTDOWN', 'PEER_CLOSED'].includes(errorCode);
+  }
   function render(): void {
+    if (canRegenerateQR()) consumeQR(false);
     renderChrome(language, status, phase, errorCode, hasPreview, copied, manualCopy);
+    el('regenerate-qr').hidden = !canRegenerateQR();
     const category = classify(preview);
     const showContent =
       hasPreview &&
@@ -69,59 +75,33 @@ export function startReceiver(paths: AppPaths): void {
     el<HTMLButtonElement>('open').disabled = !!current && !current.done;
   }
   function renderExpiry(): void {
-    const deadline = qrConsumed ? session?.sendDeadline : expiry;
+    const deadline = qrConsumed ? session?.sendDeadline : qrBlurred ? 0 : expiry;
     el('expiry').textContent = translate(language, 'qrRemaining', {
       seconds: deadline ? Math.max(0, Math.ceil((deadline - performance.now()) / 1000)) : 0,
     });
   }
-  function consumeQR(): void {
-    if (qrConsumed) return;
-    qrConsumed = true;
+  function consumeQR(consumed = true): void {
+    if (consumed) qrConsumed = true;
+    if (qrBlurred) return;
+    qrBlurred = true;
     qrGeneration++;
-    // Destroy the capability-bearing bitmap. This blurred replacement encodes nothing.
+    // Snapshot the original QR before replacing its pixels with a baked-in blur.
     const target = el<HTMLCanvasElement>('qr');
-    const placeholder = document.createElement('canvas');
-    placeholder.width = target.width;
-    placeholder.height = target.height;
-    const context = placeholder.getContext('2d')!;
-    context.scale(placeholder.width / 256, placeholder.height / 256);
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, 256, 256);
-    context.fillStyle = '#171717';
-    // A decorative matrix with finder patterns, but no encoded data or timing patterns.
-    const modules = 41;
-    const cell = 256 / (modules + 8);
-    for (let y = 0; y < modules; y++) {
-      for (let x = 0; x < modules; x++) {
-        const finder = [
-          [0, 0],
-          [modules - 7, 0],
-          [0, modules - 7],
-        ].find(([left, top]) => x >= left - 1 && x <= left + 7 && y >= top - 1 && y <= top + 7);
-        let dark = (x * 17 + y * 29 + x * y) % 7 < 3;
-        if (finder) {
-          const dx = x - finder[0];
-          const dy = y - finder[1];
-          dark =
-            dx >= 0 &&
-            dx < 7 &&
-            dy >= 0 &&
-            dy < 7 &&
-            (dx === 0 ||
-              dx === 6 ||
-              dy === 0 ||
-              dy === 6 ||
-              (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4));
-        }
-        if (dark) context.fillRect((4 + x) * cell, (4 + y) * cell, cell, cell);
-      }
-    }
-    // Burn a light blur into unrelated pixels; the original capability is destroyed.
+    const source = document.createElement('canvas');
+    source.width = target.width;
+    source.height = target.height;
+    source.getContext('2d')!.drawImage(target, 0, 0);
     const output = target.getContext('2d')!;
     output.clearRect(0, 0, target.width, target.height);
-    output.filter = `blur(${(1.5 * target.width) / 256}px)`;
-    output.drawImage(placeholder, 0, 0);
-    output.filter = 'none';
+    output.save();
+    output.fillStyle = '#ffffff';
+    output.fillRect(0, 0, target.width, target.height);
+    output.filter = `blur(${(5 * target.width) / 256}px)`;
+    output.drawImage(source, 0, 0);
+    output.restore();
+    // Release the unblurred snapshot once the replacement has been drawn.
+    source.width = 0;
+    source.height = 0;
     el('qr-loading').hidden = true;
   }
 
@@ -183,8 +163,7 @@ export function startReceiver(paths: AppPaths): void {
         },
         error(code) {
           if (mine !== connectionGeneration) return;
-          if (!hasPreview) errorCode = code;
-          else if (!['NETWORK_DISCONNECTED', 'PEER_CLOSED'].includes(code)) errorCode = code;
+          errorCode = code;
           render();
         },
       },
@@ -201,6 +180,11 @@ export function startReceiver(paths: AppPaths): void {
     resetData();
     errorCode = '';
     expiry = 0;
+    qrConsumed = false;
+    qrBlurred = false;
+    phase = 'creating';
+    status = 'creating';
+    el('qr-loading').hidden = false;
     render();
     const value = attach();
     await value.startReceiver();
@@ -341,6 +325,9 @@ export function startReceiver(paths: AppPaths): void {
       copied = false;
       render();
     }, 2000);
+  });
+  el('regenerate-qr').addEventListener('click', () => {
+    if (canRegenerateQR()) void newReceiver();
   });
   el('open').addEventListener('click', openContent);
   el('clear').addEventListener('click', () => {

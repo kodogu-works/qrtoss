@@ -51,7 +51,7 @@ test('control replies exhaust a socket lifetime budget despite continued heartbe
     const client = core.connect(socket, 'ip');
     await core.message(client, JSON.stringify({ v: 1, type: 'auth', role: 'receiver', room, cap }));
     for (let id = 0; id < 500 && socket.readyState === 1; id++) {
-      clock += 250;
+      clock += 100;
       await core.message(client, JSON.stringify({ v: 1, type: 'hb.ping', id }));
       core.sweep();
     }

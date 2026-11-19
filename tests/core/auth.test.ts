@@ -42,7 +42,7 @@ test('async capability hashing cannot revive an expired or disconnected room', a
     );
     // Let the global admission check finish and leave the digest unresolved.
     await Promise.resolve();
-    if (reason === 'expiry') clock = 300_000;
+    if (reason === 'expiry') clock = 60_000;
     else core.disconnect(client);
     pending.resolve(digest(cap));
     await auth;

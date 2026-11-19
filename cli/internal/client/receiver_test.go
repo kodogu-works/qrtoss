@@ -134,7 +134,7 @@ func (f *receiverFixture) advance(stage string) {
 		return
 	}
 	f.keepReceiving(f.server("pair.committed", map[string]any{
-		"peer": f.peer, "serverTime": 0, "readyExpiresAt": 10000, "idleExpiresAt": 1800000,
+		"peer": f.peer, "serverTime": 0, "readyExpiresAt": 10000, "idleExpiresAt": 120000,
 	}))
 	if stage == "confirming" {
 		return
@@ -144,7 +144,7 @@ func (f *receiverFixture) advance(stage string) {
 		return
 	}
 	f.keepReceiving(f.server("pair.active", map[string]any{
-		"peer": f.peer, "serverTime": 0, "idleExpiresAt": 1800000,
+		"peer": f.peer, "serverTime": 0, "idleExpiresAt": 120000,
 	}))
 	f.socket.messages = nil
 }
@@ -170,7 +170,7 @@ func TestReceiverHandshakeOrder(t *testing.T) {
 				}), 4)
 			} else {
 				expectReceiveFailure(t, f.server("pair.active", map[string]any{
-					"peer": f.peer, "serverTime": 0, "idleExpiresAt": 1800000,
+					"peer": f.peer, "serverTime": 0, "idleExpiresAt": 120000,
 				}), 4)
 			}
 			if f.socket.count("room.close") != 1 {
@@ -201,7 +201,7 @@ func TestReceiverCommitRequiresProof(t *testing.T) {
 	f := newReceiverFixture(t, io.Discard)
 	f.advance("candidate")
 	expectReceiveFailure(t, f.server("pair.committed", map[string]any{
-		"peer": f.peer, "serverTime": 0, "readyExpiresAt": 10000, "idleExpiresAt": 1800000,
+		"peer": f.peer, "serverTime": 0, "readyExpiresAt": 10000, "idleExpiresAt": 120000,
 	}), 4)
 }
 
@@ -231,7 +231,7 @@ func TestReceiverReadyExchangeIgnoresAdvertisedDeadline(t *testing.T) {
 	// A delayed notification can carry no remaining ready time. The relay
 	// decides whether confirm/ready/ACTIVE still belong to a live room.
 	f.keepReceiving(f.server("pair.committed", map[string]any{
-		"peer": f.peer, "serverTime": 10000, "readyExpiresAt": 10000, "idleExpiresAt": 1800000,
+		"peer": f.peer, "serverTime": 10000, "readyExpiresAt": 10000, "idleExpiresAt": 120000,
 	}))
 	f.keepReceiving(f.session.onTick(time.Now()))
 	f.keepReceiving(f.app(map[string]any{"type": "ready"}))
@@ -283,7 +283,7 @@ func TestReceiverLocalTimeoutsRemainActive(t *testing.T) {
 func TestReceiverOwnIdleExpiry(t *testing.T) {
 	f := newReceiverFixture(t, io.Discard)
 	f.advance("connected")
-	now := f.session.connection().activity.last.Add(30 * time.Minute)
+	now := f.session.connection().activity.last.Add(120 * time.Second)
 	f.session.lastPong = now
 	result := f.session.onTick(now)
 	expectReceiveFailure(t, result, 3)
@@ -310,7 +310,7 @@ func TestReceiverCloseRoomDuringCleanup(t *testing.T) {
 			return f.session.onControl([]byte(`{"v":1,"type":"unexpected"}`))
 		}},
 		{"idle timeout", "idle_timeout", "SESSION_EXPIRED", 3, func(f *receiverFixture) *receiveResult {
-			now := f.session.connection().activity.last.Add(30 * time.Minute)
+			now := f.session.connection().activity.last.Add(120 * time.Second)
 			f.session.lastPong = now
 			return f.session.onTick(now)
 		}},

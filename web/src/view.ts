@@ -3,6 +3,7 @@ import type { AppPaths } from './paths';
 import type { Phase } from './session';
 
 const iconPaths = {
+  reload: '<path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.3 5.7M20 7v5l-4-4"/>',
   arrow: '<path d="M6 18 18 6M6 6h12v12"/>',
   github:
     '<path d="M8 21v-3.3c-3.2.7-3.8-1.5-4.5-2M16 21v-3.8c0-1-.3-1.6-.8-2.1 3.1-.4 5.8-1.5 5.8-5.5 0-1.3-.5-2.5-1.4-3.4.2-1.1.1-2.2-.4-3.2-1.6 0-2.9.8-3.7 1.4a12 12 0 0 0-7 0C7.7 3.8 6.4 3 4.8 3c-.5 1-.6 2.1-.4 3.2A4.9 4.9 0 0 0 3 9.6c0 4 2.7 5.1 5.8 5.5-.5.5-.8 1.1-.8 2.1"/>',
@@ -86,7 +87,10 @@ export function mountPage(sender: boolean, paths: AppPaths): void {
 </div>
 <p class="expiry"><span data-i18n="qrValidity"></span> <span id="expiry"></span></p>
 </div>
+<div class="qr-error-actions">
 <p id="error" class="notice error" role="alert" hidden></p>
+<button id="regenerate-qr" class="button secondary" data-i18n-aria-label="regenerateQR" hidden>${icon('reload')}</button>
+</div>
 </section>
 <section id="receiver-result" class="card result-card" aria-labelledby="result-heading" hidden>
 <div class="card-heading"><h2 id="result-heading" data-i18n="stepThree"></h2>

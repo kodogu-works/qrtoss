@@ -630,6 +630,23 @@ footer {
   line-height: 24px;
   font-size: 15px;
 }
+.qr-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.qr-error-actions:has(#error:not([hidden])) {
+  margin-top: 12px;
+}
+.qr-error-actions #error {
+  margin: 0;
+}
+.qr-error-actions #regenerate-qr {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 10px;
+}
 .receiver-main #error {
   max-width: 560px;
 }

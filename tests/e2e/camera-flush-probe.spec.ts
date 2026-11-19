@@ -958,7 +958,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await r.route('**/api/v1/rooms', async (route) => {
           const response = await route.fetch();
           // Create the room at zero, then authenticate just before its deadline.
-          clock = 299000;
+          clock = 59000;
           await route.fulfill({ response });
         });
         await r.routeWebSocket('**/ws', (ws) => {
@@ -977,7 +977,7 @@ for (const basePath of ['/', '/qrtoss/'])
         const url = await pairingURL(r);
         await s.goto(url);
         const release = await committed.promise;
-        clock = 300001;
+        clock = 60001;
         fixture.relay.sweep();
         await r.evaluate(() => {
           Object.defineProperty(performance, 'now', { configurable: true, value: () => 1001 });
@@ -1033,7 +1033,7 @@ for (const basePath of ['/', '/qrtoss/'])
           const url = await pairingURL(r);
           await s.goto(url);
           const release = await proof.promise;
-          const expiredClock = expired === 'candidate' ? 10001 : 300001;
+          const expiredClock = expired === 'candidate' ? 10001 : 60001;
           await r.evaluate((offset) => {
             Object.defineProperty(performance, 'now', { configurable: true, value: () => offset });
           }, expiredClock);
@@ -1048,8 +1048,16 @@ for (const basePath of ['/', '/qrtoss/'])
             await expect(r.locator('#error')).toBeHidden();
             expect(fixture.relay.stats().rooms).toBe(1);
           } else {
+            await expect(r.getByRole('button', { name: 'Regenerate QR code' })).toBeVisible();
             await expect(r.locator('#error')).toHaveText('The connection QR code expired.');
             expect(fixture.relay.stats().rooms).toBe(0);
+            await r.getByRole('button', { name: 'Regenerate QR code' }).click();
+            const regeneratedURL = await pairingURL(r);
+            expect(regeneratedURL).not.toBe(url);
+            await expect(r.locator('#qr')).toHaveAccessibleName('Connection QR code');
+            await expect(r.locator('#expiry')).toHaveText('60 seconds');
+            await expect(r.locator('#regenerate-qr')).toBeHidden();
+            expect(fixture.relay.stats().rooms).toBe(1);
           }
           expect(controls).not.toContain('pair.commit');
           expect(controls).not.toContain('pair.reject');

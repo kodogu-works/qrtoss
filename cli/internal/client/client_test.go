@@ -309,7 +309,7 @@ func TestWaitingDeadlineIncludesConnect(t *testing.T) {
 func TestReceiverActivity(t *testing.T) {
 	now := time.Now()
 	a := receiverActivity{}
-	deadline := now.Add(30 * time.Minute)
+	deadline := now.Add(120 * time.Second)
 	a.record(now)
 	if !a.due(now, deadline) {
 		t.Fatal("first activity must send")
@@ -323,10 +323,10 @@ func TestReceiverActivity(t *testing.T) {
 		t.Fatal("last activity must be sent later")
 	}
 	a.sent, a.pending = now.Add(15*time.Second), false
-	if a.expired(now.Add(30 * time.Minute)) {
+	if a.expired(now.Add(120 * time.Second)) {
 		t.Fatal("expiry must follow activity, not initial touch")
 	}
-	if !a.expired(now.Add(30*time.Minute + time.Second)) {
+	if !a.expired(now.Add(120*time.Second + time.Second)) {
 		t.Fatal("local idle boundary must expire")
 	}
 	if a.due(now.Add(30*time.Second), deadline) {
