@@ -308,25 +308,30 @@ test('TD10: CapacityDO restart and failed or timed-out admission preserve existi
 
 test('TD10: room and authenticated socket leases recover within the 60-second renewal interval', async (t) => {
   let clock = 0;
-  const { relay, url, create } = await setup(t, { publicOrigin: ORIGIN, now: () => clock });
-  const room = await create();
-  const receiver = await Peer.connect(url, 'receiver', room.room, room.receiverCap, ORIGIN);
+  const { relay, url } = await setup(t, { publicOrigin: ORIGIN, now: () => clock });
+  // A waiting room expires at 60 seconds, exactly when the leases renew.
+  // Keep an active session and both peers alive to isolate lease recovery.
+  const { r: receiver, s: sender } = await pair(url, ORIGIN);
+  t.after(() => {
+    receiver.close();
+    sender.close();
+  });
   await relay.control('restart-capacity');
   assert.equal((await relay.control()).capacity.sockets, 0);
   for (let id = 0; id < 4; id++) {
     clock += 15_000;
     receiver.send({ type: 'hb.ping', id });
-    await receiver.next('hb.pong');
+    sender.send({ type: 'hb.ping', id });
+    await Promise.all([receiver.next('hb.pong'), sender.next('hb.pong')]);
   }
   let capacity = (await relay.control()).capacity;
-  for (let tries = 0; tries < 100 && (!capacity.rooms || !capacity.sockets); tries++) {
+  for (let tries = 0; tries < 100 && (capacity.rooms !== 1 || capacity.sockets !== 2); tries++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
     capacity = (await relay.control()).capacity;
   }
   assert.equal(capacity.rooms, 1);
-  assert.equal(capacity.sockets, 1);
+  assert.equal(capacity.sockets, 2);
   assert.equal(capacity.unauthenticated, 0);
-  receiver.close();
 });
 
 test('TD10: delayed renewal after release does not consume capacity or per-IP socket slots', async (t) => {
