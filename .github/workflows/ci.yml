@@ -58,7 +58,7 @@ jobs:
           govulncheck ./...
         working-directory: cli
       - name: Cross-build the four CLI targets
-        run: sh scripts/release-cli.sh 0.1.0 dist/cli-ci
+        run: sh scripts/release-cli.sh dist/cli-ci
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       # picomatch has no patched release for GHSA-fc5q-39xc-vjpf.

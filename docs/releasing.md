@@ -14,8 +14,10 @@ Release publication, the public service origin, signing identities and a Homebre
 With Go on PATH, from the repository root:
 
 ```sh
-npm run release:cli -- 0.1.0 artifacts/cli
+npm run release:cli -- artifacts/cli
 ```
+
+The release version is read from the root `package.json`; no version argument is needed. The optional argument selects the output directory, which defaults to `dist/cli/<version>`. The same version is embedded in `qrtoss --version` and used for binary names, the launcher and the Homebrew formula. Direct `go build` does not read `package.json`; use this release command to embed the package version.
 
 Set `QRTOSS_PUBLIC_ORIGIN=https://your-service.example` to embed a real service origin. Set `QRTOSS_DOWNLOAD_BASE_URL` to the HTTPS directory where that exact version's four binaries will be published; the script then also generates `run.sh` with embedded hashes and `qrtoss.rb` for a Homebrew tap. Without a download base it builds binaries/checksums only. `QRTOSS_SIGNING_KEY` optionally points to an existing private key for signing `SHA256SUMS` with OpenSSL. These variables configure a release build; they are not required for local development.
 

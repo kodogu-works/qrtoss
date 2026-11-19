@@ -1,10 +1,14 @@
 #!/bin/sh
 # Build reproducible, uncompressed release assets. Run from the repository root.
 set -eu
-version=${1:?usage: scripts/release-cli.sh VERSION [OUTPUT_DIR]}
-case "$version" in ''|*[!0-9A-Za-z.-]*) echo 'Invalid version' >&2; exit 2;; esac
-output=${2:-dist/cli/$version}
+if [ "$#" -gt 1 ]; then
+ echo 'usage: scripts/release-cli.sh [OUTPUT_DIR]' >&2
+ exit 2
+fi
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+version=$(node -e 'const fs = require("node:fs"); const v = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).version; if (typeof v !== "string" || !/^[0-9A-Za-z.-]+$/.test(v)) { console.error("Invalid package.json version"); process.exit(2); } process.stdout.write(v);' "$root/package.json")
+case "$version" in ''|*[!0-9A-Za-z.-]*) echo 'Invalid version' >&2; exit 2;; esac
+output=${1:-dist/cli/$version}
 case "$output" in /*) ;; *) output=$root/$output;; esac
 mkdir -p "$output"
 go_command=${GO:-go}
