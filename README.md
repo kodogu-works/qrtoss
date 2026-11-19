@@ -66,25 +66,25 @@ For `workers.dev`, deploy without editing the config: `PUBLIC_ORIGIN=https://qrt
 
 ## CLI
 
-Try the CLI without building it (macOS/Linux, arm64/amd64):
+Try the CLI without building it (macOS/Linux, arm64/amd64). Replace `https://qr.your-domain.example` with your deployment’s public origin (`PUBLIC_ORIGIN`) that serves `run.sh` and the CLI binaries:
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh
+curl -fsSL https://qr.your-domain.example/run.sh | sh
 ```
 
 Pass CLI options after `sh -s --`:
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --timeout 120
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr full
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr off
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --jsonl > received.jsonl
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --timeout 120
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --qr full
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --qr off
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --jsonl > received.jsonl
 ```
 
-`--qr off` prints the connection URL instead of a QR. The launcher downloads and caches the binary for your platform and forwards CLI options. This executes a script from the distribution service; use it only if you trust that service. For automation, prefer an installed CLI, or save the script and check that the download succeeded before running it:
+`--qr off` prints the connection URL instead of a QR. The launcher downloads and caches the binary for your platform and forwards CLI options. This executes a script from the distribution service; use it only if you trust that service. For automation, run an installed CLI directly, or use the following command to run the script only if the download succeeds:
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh -o qrtoss-run.sh &&
+curl -fsSL https://qr.your-domain.example/run.sh -o qrtoss-run.sh &&
   sh qrtoss-run.sh --timeout 120
 ```
 

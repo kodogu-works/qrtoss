@@ -66,25 +66,25 @@ Cloudflare Workers と Durable Objects でも、同じブラウザ・CLI の通�
 
 ## CLI
 
-ビルドせずにCLIを試せます（macOS/Linux、arm64/amd64対応）。
+ビルドせずにCLIを試せます（macOS/Linux、arm64/amd64対応）。`https://qr.your-domain.example`は、`run.sh`とCLI実行ファイルを配信している環境の公開origin（`PUBLIC_ORIGIN`）に置き換えてください。
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh
+curl -fsSL https://qr.your-domain.example/run.sh | sh
 ```
 
 CLIのオプションは`sh -s --`の後ろに指定します。
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --timeout 120
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr full
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --qr off
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh | sh -s -- --jsonl > received.jsonl
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --timeout 120
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --qr full
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --qr off
+curl -fsSL https://qr.your-domain.example/run.sh | sh -s -- --jsonl > received.jsonl
 ```
 
-`--qr off`ではQRの代わりに接続URLを表示します。ランチャーは環境に合う実行ファイルをダウンロードしてキャッシュし、CLIへオプションを渡します。配信元のスクリプトを実行するため、信頼できる場合に利用してください。自動化ではインストール済みCLIを使うか、スクリプトの取得成功を確認してから実行します。
+`--qr off`ではQRの代わりに接続URLを表示します。ランチャーは環境に合う実行ファイルをダウンロードしてキャッシュし、CLIへオプションを渡します。配信元のスクリプトを実行するため、信頼できる場合に利用してください。自動処理では、インストール済みCLIを直接実行するか、次のようにダウンロード成功時だけスクリプトを実行してください。
 
 ```sh
-curl -fsSL https://qrtoss.kodogu.workers.dev/run.sh -o qrtoss-run.sh &&
+curl -fsSL https://qr.your-domain.example/run.sh -o qrtoss-run.sh &&
   sh qrtoss-run.sh --timeout 120
 ```
 
