@@ -103,3 +103,33 @@ jobs:
         run: PUBLIC_ORIGIN=https://qrtoss.example docker compose config --quiet
       - name: Build production image
         run: docker build --tag qrtoss:ci .
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: [test, e2e, container]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_ORIGIN }}
+    concurrency:
+      group: cloudflare-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.13.0
+          cache: npm
+      - run: npm ci
+      - name: Deploy Worker and assets
+        run: |
+          : "${PUBLIC_ORIGIN:?Set the production PUBLIC_ORIGIN variable}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set the production CLOUDFLARE_ACCOUNT_ID variable}"
+          : "${CLOUDFLARE_API_TOKEN:?Set the production CLOUDFLARE_API_TOKEN secret}"
+          npm run deploy:cloudflare
+        env:
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

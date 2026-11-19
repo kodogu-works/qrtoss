@@ -62,6 +62,8 @@ Keep `PUBLIC_ORIGIN` set to the origin only, for example `https://myserver.examp
 
 The relay also runs on Cloudflare Workers and Durable Objects with the same browser and CLI protocol. Choose a custom domain or a `workers.dev` URL and set the matching `PUBLIC_ORIGIN` in `wrangler.jsonc`, run `npm run test:cloudflare`, then deploy with `npm run deploy:cloudflare`. For local workerd use `npm run dev:cloudflare`. See [Cloudflare setup, privacy and operations](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
 
+For `workers.dev`, deploy without editing the config: `PUBLIC_ORIGIN=https://qrtoss.my-account.workers.dev npm run deploy:cloudflare`. The script generates and validates a temporary config; the Worker name must match `wrangler.jsonc`. Add `-- --dry-run` to package without deploying.
+
 ## CLI
 
 Build the standalone executable:

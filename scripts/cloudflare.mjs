@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 function run(command, args, env = process.env) {
   return new Promise((resolve, reject) => {
@@ -11,40 +14,68 @@ const action = process.argv[2];
 if (!['dev', 'deploy', 'test'].includes(action)) throw new Error('CLOUDFLARE_COMMAND_INVALID');
 if (process.env.QRTOSS_BASE_PATH && process.env.QRTOSS_BASE_PATH !== '/')
   throw new Error('CLOUDFLARE_REQUIRES_ROOT_BASE_PATH');
-await run('npm', ['run', 'check:cloudflare']);
-await run('npm', ['run', 'build:web']);
-if (action === 'dev') {
-  await run(
-    'wrangler',
-    [
-      'dev',
-      '--local',
-      '--infer-origin-from-routes=false',
-      '--ip',
-      '127.0.0.1',
-      '--port',
-      '8787',
-      '--local-protocol',
-      'https',
-      '--var',
-      'PUBLIC_ORIGIN:https://127.0.0.1:8787',
-    ],
-    { ...process.env, WRANGLER_SEND_METRICS: 'false' },
-  );
-} else if (action === 'deploy') {
-  await run('wrangler', ['deploy'], { ...process.env, WRANGLER_SEND_METRICS: 'false' });
-} else {
-  await run(
-    process.execPath,
-    [
-      '--import',
-      'tsx',
-      '--test',
-      'tests/relay/relay.test.ts',
-      'tests/interop/relay.test.ts',
-      'tests/interop/cli.test.ts',
-      'tests/cloudflare/*.integration.ts',
-    ],
-    { ...process.env, QRTOSS_TEST_RELAY: 'cloudflare' },
-  );
+let temporaryDirectory;
+let configPath;
+try {
+  if (action === 'deploy' && process.env.PUBLIC_ORIGIN) {
+    const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
+    const origin = new URL(process.env.PUBLIC_ORIGIN);
+    config.vars.PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN;
+    config.workers_dev = origin.hostname.endsWith('.workers.dev');
+    config.routes = config.workers_dev ? [] : [{ pattern: origin.host, custom_domain: true }];
+    // Paths in an alternate Wrangler config are relative to that config.
+    config.main = resolve(config.main);
+    config.assets.directory = resolve(config.assets.directory);
+    config.$schema = resolve(config.$schema);
+    temporaryDirectory = await mkdtemp(join(tmpdir(), 'qrtoss-deploy-'));
+    configPath = join(temporaryDirectory, 'wrangler.json');
+    await writeFile(configPath, JSON.stringify(config));
+  }
+  await run(process.execPath, [
+    'scripts/check-cloudflare.mjs',
+    ...(configPath ? [configPath] : []),
+  ]);
+
+  await run('npm', ['run', 'build:web']);
+  if (action === 'dev') {
+    await run(
+      'wrangler',
+      [
+        'dev',
+        '--local',
+        '--infer-origin-from-routes=false',
+        '--ip',
+        '127.0.0.1',
+        '--port',
+        '8787',
+        '--local-protocol',
+        'https',
+        '--var',
+        'PUBLIC_ORIGIN:https://127.0.0.1:8787',
+      ],
+      { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+    );
+  } else if (action === 'deploy') {
+    await run(
+      'wrangler',
+      ['deploy', ...(configPath ? ['--config', configPath] : []), ...process.argv.slice(3)],
+      { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+    );
+  } else {
+    await run(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--test',
+        'tests/relay/relay.test.ts',
+        'tests/interop/relay.test.ts',
+        'tests/interop/cli.test.ts',
+        'tests/cloudflare/*.integration.ts',
+      ],
+      { ...process.env, QRTOSS_TEST_RELAY: 'cloudflare' },
+    );
+  }
+} finally {
+  if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
 }

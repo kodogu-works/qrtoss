@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { transform } from 'esbuild';
 
-const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
+const config = JSON.parse(await readFile(process.argv[2] ?? 'wrangler.jsonc', 'utf8'));
 const allowed = new Set([
   '$schema',
   'name',

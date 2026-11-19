@@ -51,6 +51,8 @@ Mantén `PUBLIC_ORIGIN` como origen sin ruta, por ejemplo `https://myserver.exam
 
 El servidor también funciona con Cloudflare Workers y Durable Objects, usando el mismo protocolo de navegador y CLI. Elige un dominio personalizado o una URL de `workers.dev` y configura el `PUBLIC_ORIGIN` correspondiente en `wrangler.jsonc`, ejecuta `npm run test:cloudflare` y publica con `npm run deploy:cloudflare`. Para workerd local, usa `npm run dev:cloudflare`. Consulta [la configuración, privacidad y operación en Cloudflare](docs/self-hosting.md#cloudflare-workers-and-durable-objects).
 
+Para `workers.dev`, publica sin editar la configuración: `PUBLIC_ORIGIN=https://qrtoss.my-account.workers.dev npm run deploy:cloudflare`. El script genera y valida una configuración temporal; el nombre del Worker debe coincidir con `wrangler.jsonc`. Añade `-- --dry-run` para preparar sin publicar.
+
 ## Cliente de línea de comandos
 
 ```sh

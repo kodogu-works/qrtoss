@@ -126,7 +126,19 @@ npm run dev:cloudflare
 
 Open `https://127.0.0.1:8787`. Wrangler uses a local development certificate, which the browser may require you to trust. This loopback origin is for desktop development; real-phone tests require a reachable HTTPS deployment with a certificate trusted by the phone. The command builds the Web assets, then starts local workerd through Wrangler. Web asset changes require rebuilding and restarting. It overrides `PUBLIC_ORIGIN` only for this local command and disables Wrangler's route-based origin inference so the Worker sees the actual loopback HTTPS origin.
 
-Before deploying, edit `wrangler.jsonc` and choose one hosting mode:
+You can deploy without editing `wrangler.jsonc` by setting the shell environment variable `PUBLIC_ORIGIN`:
+
+```sh
+PUBLIC_ORIGIN=https://qrtoss.my-account.workers.dev npm run deploy:cloudflare
+# Validate and package without uploading or deploying:
+PUBLIC_ORIGIN=https://qrtoss.my-account.workers.dev npm run deploy:cloudflare -- --dry-run
+# A custom domain is inferred from a non-workers.dev origin:
+PUBLIC_ORIGIN=https://qr.example.com npm run deploy:cloudflare
+```
+
+The script generates a temporary configuration, sets `workers_dev`, `routes` and `vars.PUBLIC_ORIGIN` together, validates it, and removes it after Wrangler exits. The repository configuration is unchanged. For workers.dev, the Worker name in the URL must match `name` in `wrangler.jsonc`. `PUBLIC_ORIGIN` is read from the shell for deployment; it is not automatically loaded from a `.env` file. When omitted, deployment uses `wrangler.jsonc` as before.
+
+Alternatively, edit `wrangler.jsonc` and choose one hosting mode:
 
 | Setting | Custom domain (repository default) | `workers.dev` |
 | --- | --- | --- |
@@ -197,3 +209,19 @@ The Cloudflare hosting trust boundary includes Cloudflare's TLS termination and 
 The local non-persistence test checks all persisted SQLite tables and scans the files for synthetic transfer secrets. workerd can create empty namespace databases, WAL/SHM files and empty internal alarm metadata without application writes; file existence alone does not establish transfer persistence. Before public operation, also confirm **zero DO storage usage and storage operations** in the deployed account. Do not add KV, D1, R2, Queues, Cache API, Analytics Engine, Hyperdrive, attachment serialization or hibernation APIs.
 
 Use a separate Worker and origin in the chosen hosting mode with production-equivalent settings for manual acceptance. Verify receiver and sender on separate networks, a real `qrtoss --server https://your-host` transfer, deployment/restart recovery, zero storage metrics, security headers on all response classes and exact deployed HTML/JS bytes. The configured custom domain or stable `workers.dev` URL must work; other hosts and version/alias URLs must be disabled or return 404. These account, edge, network and zone checks are not established by local workerd tests. See specification TD03, TD08, TD11, TD12, TD13 and TD15 and [validation status](validation.md).
+
+### Automatic deployment after CI
+
+The CI workflow deploys pushes to `main` after `test`, all three `e2e` browser jobs, and `container` succeed. Pull requests do not deploy. Production deployments run serially.
+
+In the GitHub repository, open **Settings → Environments**, create **production**, and restrict deployment branches to `main`. For unattended deployment, do not enable required reviewers. Configure:
+
+| Location in production | Name | Value |
+| --- | --- | --- |
+| Environment variables | `PUBLIC_ORIGIN` | `https://qrtoss.<account-subdomain>.workers.dev` or your custom HTTPS origin |
+| Environment variables | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+| Environment secrets | `CLOUDFLARE_API_TOKEN` | A scoped Cloudflare API token for Worker deployment |
+
+Create the token in Cloudflare **My Profile → API Tokens → Create Token**, using the **Edit Cloudflare Workers** template and restricting account resources to the target account. The account ID is available from the Cloudflare dashboard. The workflow passes these settings only to the deployment step; the API token is never a Worker runtime binding. Keep the token out of configuration files and source control.
+
+See [Cloudflare's GitHub Actions guide](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/) and [GitHub environment configuration](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
