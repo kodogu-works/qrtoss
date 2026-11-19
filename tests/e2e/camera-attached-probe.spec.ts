@@ -168,7 +168,7 @@ for (const basePath of ['/', '/qrtoss/'])
               ticks: number;
               lastReady: boolean;
               stopped: boolean;
-              canvas?: WeakRef<HTMLCanvasElement>;
+              canvas?: HTMLCanvasElement;
             };
           };
           fixture.qrCameraTracks = [];
@@ -193,7 +193,9 @@ for (const basePath of ['/', '/qrtoss/'])
               c.style.cssText =
                 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;pointer-events:none';
               document.body.append(c);
-              fixture.cameraDebug.canvas = new WeakRef(c);
+              // The capture stream must own its source across forced WebKit GC.
+              // Retaining only the 2D context can leave video playing stale pixels.
+              debug.canvas = c;
               const ctx = c.getContext('2d')!;
               const draw = () => {
                 debug.draws++;
@@ -208,6 +210,8 @@ for (const basePath of ['/', '/qrtoss/'])
                   debug.ticks++;
                   if (stream.getTracks().every((track) => track.readyState === 'ended')) {
                     debug.stopped = true;
+                    if (debug.canvas === c) debug.canvas = undefined;
+                    c.remove();
                     clearInterval(timer);
                   } else draw();
                 }, 66);
@@ -226,8 +230,6 @@ for (const basePath of ['/', '/qrtoss/'])
                 }
               }
               fixture.qrCameraTracks.push(...stream.getTracks());
-              for (const track of stream.getTracks())
-                track.addEventListener('ended', () => clearInterval(timer));
               return stream;
             },
           });
@@ -255,10 +257,8 @@ for (const basePath of ['/', '/qrtoss/'])
           return {
             debug: (window as unknown as { cameraDebug: unknown }).cameraDebug,
             source: (
-              window as unknown as { cameraDebug: { canvas?: WeakRef<HTMLCanvasElement> } }
-            ).cameraDebug.canvas
-              ?.deref()
-              ?.toDataURL(),
+              window as unknown as { cameraDebug: { canvas?: HTMLCanvasElement } }
+            ).cameraDebug.canvas?.toDataURL(),
             ready: (window as unknown as { cameraReady: boolean }).cameraReady,
             visibility: document.visibilityState,
             hidden: document.hidden,
