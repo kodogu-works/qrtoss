@@ -632,6 +632,8 @@ footer {
   margin-top: 16px;
 }
 .receiver-main .expiry {
+  width: 100%;
+  text-align: center;
   margin: 0;
   min-height: 24px;
   line-height: 24px;
