@@ -243,15 +243,33 @@ for (const basePath of ['/', '/qrtoss/'])
       await page.bringToFront();
       // The app stops scanning in hidden documents; wait for the sender to be visible.
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
-      await expect
-        .poll(() => page.locator('#video').evaluate((video: HTMLVideoElement) => video.readyState))
-        .toBeGreaterThanOrEqual(2);
       // Exercise the camera fixture after WebKit has had a chance to collect DOM wrappers.
       // Forced GC can freeze WebKit canvas capture; exercise collection in other engines.
       if (test.info().project.name !== 'webkit') await page.requestGC();
-      await page.evaluate(() => {
+      // Wait for the application's camera start to settle before replacing its test feed.
+      await expect(page.locator('#scan')).toBeEnabled();
+      await page.evaluate(async (refreshStream) => {
         (window as unknown as { cameraReady: boolean }).cameraReady = true;
-      });
+        if (refreshStream) {
+          // WebKit can retain the initial blank canvas frame indefinitely.
+          // Reconnect a stream whose first frame already contains the QR.
+          const video = document.querySelector<HTMLVideoElement>('#video')!;
+          const previous = video.srcObject as MediaStream | null;
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          video.srcObject = stream;
+          await video.play().catch((error: DOMException) => {
+            // A successful decode stops playback before play() can resolve.
+            if (error.name !== 'AbortError') throw error;
+          });
+          for (const track of previous?.getTracks() ?? []) track.stop();
+        }
+      }, test.info().project.name === 'webkit');
+      if (test.info().project.name !== 'webkit')
+        await expect
+          .poll(() =>
+            page.locator('#video').evaluate((video: HTMLVideoElement) => video.readyState),
+          )
+          .toBeGreaterThanOrEqual(2);
       try {
         await expect(page.locator('#sender-text')).toHaveText(text);
       } catch (error) {
