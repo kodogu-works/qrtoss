@@ -7,6 +7,7 @@ test('manual language wins and unsupported preferences are skipped', () => {
   assert.equal(chooseLanguage(['zh-Hant-TW', 'fr-FR', 'ja-JP']), 'ja');
   assert.equal(chooseLanguage(['es-MX', 'en-US']), 'es');
   assert.equal(chooseLanguage(['pt-PT'], 'garbage'), 'en');
+  assert.equal(chooseLanguage(['constructor', 'ja-JP'], 'toString'), 'ja');
 });
 test('all supported locales contain every UI and error translation', () => {
   const expected = Object.keys(en).sort();
@@ -22,6 +23,7 @@ test('all supported locales contain every UI and error translation', () => {
     }
   }
   for (const value of Object.values(errors))
-    for (const locale of ['en', 'ja', 'es'] as const) assert.ok(value[locale]);
+    for (const locale of Object.keys(dictionaries))
+      assert.ok(value[locale as keyof typeof dictionaries]);
   assert.equal(translate('en', 'expires', { seconds: 42 }), 'Expires in 42s');
 });

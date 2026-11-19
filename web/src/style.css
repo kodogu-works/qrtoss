@@ -758,3 +758,63 @@ footer {
 :lang(ja) .marketing-intro h2 {
   word-break: keep-all;
 }
+
+.help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--helper-size);
+  white-space: nowrap;
+}
+.help-button:hover {
+  color: var(--muted);
+}
+.help-dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100svh - 32px);
+  padding: 24px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.help-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.help-steps {
+  margin: 24px 0;
+  padding-inline-start: 24px;
+}
+.help-steps li + li {
+  margin-block-start: 20px;
+}
+.help-steps h3 {
+  margin: 0 0 6px;
+  font-size: var(--body-size);
+}
+.help-steps p {
+  margin: 0;
+  color: var(--muted);
+}
+.help-dialog .actions {
+  justify-content: flex-end;
+  margin-block-start: 24px;
+}
+@media (max-width: 480px) {
+  .topbar:has(.help-button) {
+    flex-wrap: wrap;
+    padding-block: 8px;
+    gap: 4px;
+  }
+  .topbar:has(.help-button) .header-actions {
+    margin-inline-start: auto;
+    gap: 8px;
+  }
+}

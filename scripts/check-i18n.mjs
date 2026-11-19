@@ -14,9 +14,9 @@ for (const [lang, dict] of Object.entries(dictionaries)) {
       throw new Error(`Invalid translation: ${lang}/${key}`);
 }
 for (const code of JSON.parse(await readFile('protocol/error-codes.json', 'utf8'))) {
-  for (const lang of ['en', 'ja', 'es'])
+  for (const lang of Object.keys(dictionaries))
     if (!errors[code]?.[lang]) throw new Error(`Missing error: ${code}/${lang}`);
 }
 console.log(
-  'Web dictionaries and error translations: en, ja, es OK. English CLI presentation is checked by go test.',
+  `Web dictionaries and error translations: ${Object.keys(dictionaries).join(', ')} OK. English CLI presentation is checked by go test.`,
 );

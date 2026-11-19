@@ -48,7 +48,13 @@ export function startReceiver(paths: AppPaths): void {
     render();
   }
   function canRegenerateQR(): boolean {
-    return ['PAIR_EXPIRED', 'SESSION_EXPIRED', 'NETWORK_DISCONNECTED', 'SERVER_SHUTDOWN', 'PEER_CLOSED'].includes(errorCode);
+    return [
+      'PAIR_EXPIRED',
+      'SESSION_EXPIRED',
+      'NETWORK_DISCONNECTED',
+      'SERVER_SHUTDOWN',
+      'PEER_CLOSED',
+    ].includes(errorCode);
   }
   function render(): void {
     if (canRegenerateQR()) consumeQR(false);
@@ -293,6 +299,10 @@ export function startReceiver(paths: AppPaths): void {
     status = 'displaying';
     render();
   }
+  el('receiver-help').addEventListener('click', () => {
+    session?.activity();
+    el<HTMLDialogElement>('receiver-help-dialog').showModal();
+  });
   el<HTMLSelectElement>('language').addEventListener('change', (event) => {
     language = (event.target as HTMLSelectElement).value as Language;
     try {

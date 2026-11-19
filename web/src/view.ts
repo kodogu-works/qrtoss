@@ -1,8 +1,16 @@
-import { chooseLanguage, errorText, translate, type Key, type Language } from './i18n';
+import {
+  languageLabels,
+  chooseLanguage,
+  errorText,
+  translate,
+  type Key,
+  type Language,
+} from './i18n';
 import type { AppPaths } from './paths';
 import type { Phase } from './session';
 
 const iconPaths = {
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5m0 3h.01"/>',
   reload: '<path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.3 5.7M20 7v5l-4-4"/>',
   arrow: '<path d="M6 18 18 6M6 6h12v12"/>',
   github:
@@ -34,12 +42,13 @@ export function loadLanguage(): Language {
   }
   return chooseLanguage(navigator.languages, saved);
 }
-function header(paths: AppPaths): string {
+function header(paths: AppPaths, sender: boolean): string {
   return `<header class="topbar">
 <a class="wordmark" href="${paths.home}" aria-label="qrtoss">
 <span class="brand-symbol">${icon('arrow')}</span>qrtoss<span class="brand-dot">.</span>
 </a>
 <div class="header-actions">
+${sender ? '' : `<button id="receiver-help" class="help-button" aria-haspopup="dialog" aria-controls="receiver-help-dialog">${icon('help')}<span data-i18n="helpTitle"></span></button>`}
 <a class="github-link" href="https://github.com/kodogu-works/qrtoss" target="_blank" rel="noopener noreferrer" data-i18n-aria-label="githubLabel">
 ${icon('github')}<span>GitHub</span>
 </a>
@@ -47,9 +56,9 @@ ${icon('github')}<span>GitHub</span>
 <span id="language-label" class="sr-only" data-i18n="language">
 </span>
 <select id="language" aria-labelledby="language-label">
-<option value="en">English</option>
-<option value="ja">日本語</option>
-<option value="es">Español</option>
+${Object.entries(languageLabels)
+  .map(([language, label]) => `<option value="${language}">${label}</option>`)
+  .join('')}
 </select>
 ${icon('chevron')}
 </label>
@@ -104,6 +113,14 @@ export function mountPage(sender: boolean, paths: AppPaths): void {
 </div>
 </section>
 ${marketing()}
+<dialog id="receiver-help-dialog" class="help-dialog" aria-labelledby="receiver-help-title">
+<h2 id="receiver-help-title" data-i18n="helpTitle"></h2>
+<ol class="help-steps">
+${['Connect', 'Scan', 'Send'].map((step) => `<li><h3 data-i18n="help${step}Title"></h3><p data-i18n="help${step}Body"></p></li>`).join('')}
+</ol>
+<p class="hint" data-i18n="helpResult"></p>
+<form method="dialog" class="actions"><button class="button secondary" data-i18n="helpClose" autofocus></button></form>
+</dialog>
 </main>`;
   const senderPage = `
 <main class="sender-main">
@@ -136,7 +153,7 @@ ${marketing()}
 </section>
 ${marketing()}
 </main>`;
-  root.innerHTML = `<div class="shell">${header(paths)}${sender ? senderPage : receiver}${footer()}</div>`;
+  root.innerHTML = `<div class="shell">${header(paths, sender)}${sender ? senderPage : receiver}${footer()}</div>`;
 }
 export function renderChrome(
   language: Language,

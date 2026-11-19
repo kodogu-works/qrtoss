@@ -3,7 +3,7 @@
   <img src="docs/assets/qrtoss-logo-dark.svg#gh-dark-mode-only" alt="qrtoss" width="216" height="48">
 </h1>
 
-[English](README.md) · [Español](README.es.md)
+[English](README.md)
 
 [![CI](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml/badge.svg)](https://github.com/kodogu-works/qrtoss/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
