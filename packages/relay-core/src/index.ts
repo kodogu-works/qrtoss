@@ -84,7 +84,11 @@ export function createRelayCore(options: CoreOptions) {
       candidates: bucket(t, 10),
     };
     rooms.set(id, room);
-    return { serverTime: wallNow(), pairingExpiresAt: epoch(room.pairing) };
+    const serverTime = wallNow();
+    return {
+      serverTime,
+      pairingExpiresAt: Math.round(serverTime + Math.max(0, room.pairing - now())),
+    };
   }
   function connect(ws: RelaySocket, ip: string) {
     const t = now();

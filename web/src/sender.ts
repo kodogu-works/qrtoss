@@ -63,7 +63,7 @@ export function startSender(paths: AppPaths, fragment: string): void {
       phase !== 'connected' || busy || cliDone || photoReading;
     el('photo-error').hidden = !photoError;
     el('photo-error').textContent = photoError ? text('photoError') : '';
-    el('zoom-control').hidden = status !== 'scanning' || !scanner.zoom();
+    el('zoom-control').hidden = status !== 'scanning' || cameraStarting || !scanner.zoom();
     el('camera').hidden = status !== 'scanning';
     el('sender-preview').hidden = !showPreview;
     el('copy').hidden = !showPreview;

@@ -193,26 +193,31 @@ for (const basePath of ['/', '/qrtoss/'])
               // The capture stream must own its source across forced WebKit GC.
               // Retaining only the 2D context can leave video playing stale pixels.
               debug.canvas = c;
+              c.style.cssText =
+                'position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none';
+              document.body.append(c);
               const ctx = c.getContext('2d')!;
+              const stream = c.captureStream(15);
               const draw = () => {
                 debug.draws++;
                 debug.lastReady = fixture.cameraReady;
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, 0, 512, 512);
                 if (fixture.cameraReady) ctx.drawImage(img, 106, 106, 300, 300);
+                const captureTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+                if (typeof captureTrack.requestFrame === 'function') captureTrack.requestFrame();
                 ctx.getImageData(0, 0, 1, 1);
               };
               draw();
-              const stream = c.captureStream(15),
-                timer = setInterval(() => {
-                  debug.ticks++;
-                  if (stream.getTracks().every((track) => track.readyState === 'ended')) {
-                    debug.stopped = true;
-                    if (debug.canvas === c) debug.canvas = undefined;
-                    c.remove();
-                    clearInterval(timer);
-                  } else draw();
-                }, 66);
+              const timer = setInterval(() => {
+                debug.ticks++;
+                if (stream.getTracks().every((track) => track.readyState === 'ended')) {
+                  debug.stopped = true;
+                  if (debug.canvas === c) debug.canvas = undefined;
+                  c.remove();
+                  clearInterval(timer);
+                } else draw();
+              }, 66);
               if (zoom) {
                 for (const track of stream.getVideoTracks()) {
                   let value = 1;
@@ -240,7 +245,8 @@ for (const basePath of ['/', '/qrtoss/'])
       // The app stops scanning in hidden documents; wait for the sender to be visible.
       await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
       // Exercise the camera fixture after WebKit has had a chance to collect DOM wrappers.
-      await page.requestGC();
+      // Forced GC can freeze WebKit canvas capture; exercise collection in other engines.
+      if (test.info().project.name !== 'webkit') await page.requestGC();
       await page.evaluate(() => {
         (window as unknown as { cameraReady: boolean }).cameraReady = true;
       });
@@ -676,6 +682,7 @@ for (const basePath of ['/', '/qrtoss/'])
       const { r, s, rc, sc } = await pages(browser, 'zoom fixture', true);
       try {
         await expect(s.locator('#zoom-control')).toBeVisible();
+        await expect(s.locator('#zoom')).toHaveAttribute('max', '4');
         await s.locator('#zoom').press('End');
         await expect(s.locator('#zoom-value')).toHaveText('4.0×');
         await expect(s.locator('#camera')).toBeVisible();
@@ -1011,11 +1018,14 @@ for (const basePath of ['/', '/qrtoss/'])
           const url = await pairingURL(r);
           await s.goto(url);
           const release = await proof.promise;
-          clock = expired === 'candidate' ? 10001 : 300001;
+          const expiredClock = expired === 'candidate' ? 10001 : 300001;
           await r.evaluate((offset) => {
             Object.defineProperty(performance, 'now', { configurable: true, value: () => offset });
-          }, clock);
+          }, expiredClock);
           release();
+          // Flush the routed proof before allowing the relay timer to expire it.
+          await r.evaluate(() => {});
+          clock = expiredClock;
           // The server notification follows the delayed proof on the same ordered stream.
           fixture.relay.sweep();
           if (expired === 'candidate') {
