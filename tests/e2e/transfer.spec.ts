@@ -1064,6 +1064,7 @@ for (const basePath of ['/', '/qrtoss/'])
           } else {
             await expect(r.getByRole('button', { name: 'Regenerate QR code' })).toBeVisible();
             await expect(r.locator('#error')).toHaveText('The connection QR code expired.');
+            await expect(r.locator('#qr-expiry')).toBeHidden();
             expect(fixture.relay.stats().rooms).toBe(0);
             await r.getByRole('button', { name: 'Regenerate QR code' }).click();
             const regeneratedURL = await pairingURL(r);
@@ -1071,6 +1072,7 @@ for (const basePath of ['/', '/qrtoss/'])
             await expect(r.locator('#qr')).toHaveAccessibleName('Connection QR code');
             await expect(r.locator('#expiry')).toHaveText('60 seconds');
             await expect(r.locator('#regenerate-qr')).toBeHidden();
+            await expect(r.locator('#qr-expiry')).toBeVisible();
             expect(fixture.relay.stats().rooms).toBe(1);
           }
           expect(controls).not.toContain('pair.commit');

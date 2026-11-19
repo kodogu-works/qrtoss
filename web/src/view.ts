@@ -94,11 +94,13 @@ export function mountPage(sender: boolean, paths: AppPaths): void {
 <canvas id="qr" data-i18n-aria-label="connectionQR" aria-describedby="qr-help" role="img"></canvas>
 <div id="qr-loading" class="qr-loading" aria-hidden="true">${icon('qr')}</div>
 </div>
-<p class="expiry"><span data-i18n="qrValidity"></span> <span id="expiry"></span></p>
-</div>
-<div class="qr-error-actions">
+<div class="qr-status">
+<p id="qr-expiry" class="expiry"><span data-i18n="qrValidity"></span> <span id="expiry"></span></p>
+<div id="qr-error-actions" class="qr-error-actions" hidden>
 <p id="error" class="notice error" role="alert" hidden></p>
 <button id="regenerate-qr" class="button secondary" data-i18n-aria-label="regenerateQR" hidden>${icon('reload')}</button>
+</div>
+</div>
 </div>
 </section>
 <section id="receiver-result" class="card result-card" aria-labelledby="result-heading" hidden>

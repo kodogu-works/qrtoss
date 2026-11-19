@@ -60,6 +60,8 @@ export function startReceiver(paths: AppPaths): void {
     if (canRegenerateQR()) consumeQR(false);
     renderChrome(language, status, phase, errorCode, hasPreview, copied, manualCopy);
     el('regenerate-qr').hidden = !canRegenerateQR();
+    el('qr-expiry').hidden = canRegenerateQR();
+    el('qr-error-actions').hidden = !errorCode;
     const category = classify(preview);
     const showContent =
       hasPreview &&

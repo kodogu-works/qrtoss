@@ -624,8 +624,15 @@ footer {
   width: 100%;
   margin: 0;
 }
+.qr-status {
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 16px;
+}
 .receiver-main .expiry {
-  margin: 16px 0 0;
+  margin: 0;
   min-height: 24px;
   line-height: 24px;
   font-size: 15px;
@@ -635,9 +642,6 @@ footer {
   align-items: center;
   gap: 8px;
   max-width: 100%;
-}
-.qr-error-actions:has(#error:not([hidden])) {
-  margin-top: 12px;
 }
 .qr-error-actions #error {
   margin: 0;
