@@ -2,6 +2,7 @@
 import {
   createWorker,
   RoomDO as BaseRoomDO,
+  NetworkDO as BaseNetworkDO,
   CapacityDO as BaseCapacityDO,
 } from '../../server/cloudflare/src/index.ts';
 import type { Env } from '../../server/cloudflare/src/env.ts';
@@ -56,6 +57,53 @@ export class RoomDO extends BaseRoomDO {
     this.core.shutdown();
   }
 }
+export class PairingDO extends RoomDO {}
+export class NetworkDO extends BaseNetworkDO {
+  private upgrades = 0;
+  private virtualNow?: number;
+  private virtualWall?: number;
+  constructor(ctx: DurableObjectState, env: TestEnv) {
+    super(ctx, env);
+    this.virtualNow = env.TEST_NOW === 'real' ? undefined : Number(env.TEST_NOW);
+    this.virtualWall = env.TEST_WALL === 'real' ? undefined : Number(env.TEST_WALL);
+  }
+  protected now() {
+    return this.virtualNow ?? Date.now();
+  }
+  protected wallNow() {
+    return this.virtualWall ?? Date.now();
+  }
+  setClock(now?: number, wall?: number) {
+    this.virtualNow = now;
+    this.virtualWall = wall;
+  }
+  sweep() {
+    this.core.sweep();
+  }
+  protected leaseTimeout(callback: () => void, ms: number) {
+    const deadline = this.now() + ms;
+    const timer = setInterval(() => {
+      if (this.now() >= deadline) {
+        clearInterval(timer);
+        callback();
+      }
+    }, 10);
+    return () => clearInterval(timer);
+  }
+  fetch(request: Request) {
+    this.upgrades++;
+    return super.fetch(request);
+  }
+  stats() {
+    return { ...this.core.stats(), upgrades: this.upgrades };
+  }
+  restart() {
+    this.ctx.abort('TEST_NETWORK_RESTART');
+  }
+  shutdown() {
+    this.core.shutdown();
+  }
+}
 export class CapacityDO extends BaseCapacityDO {
   private virtualNow?: number;
   constructor(ctx: DurableObjectState, env: TestEnv) {
@@ -95,6 +143,8 @@ const clock: BridgeClock = {
 };
 const worker = createWorker(clock);
 const rooms = new Set<string>();
+const pairings = new Set<string>();
+const networks = new Set<string>();
 export default {
   async fetch(request: Request, env: TestEnv, ctx: ExecutionContext) {
     if (new URL(request.url).hostname === 'test.internal') {
@@ -132,7 +182,7 @@ export default {
         await delayed.renewSocket('test-released-socket', lateSocket);
         await delayed.authenticateSocket('test-released-socket');
       }
-      const stats = { rooms: 0, sockets: 0, upgrades: 0 };
+      const stats = { rooms: 0, pairings: 0, networks: 0, sockets: 0, upgrades: 0 };
       for (const id of rooms) {
         let room = env.ROOM.get(env.ROOM.idFromName(id)) as unknown as DurableObjectStub<RoomDO>;
         await room.setClock(time, command.wall);
@@ -148,6 +198,50 @@ export default {
         if (command.action === 'shutdown') await room.shutdown();
         const current = await room.stats();
         stats.rooms += current.rooms;
+        stats.sockets += current.sockets;
+        stats.upgrades += current.upgrades;
+      }
+      for (const id of pairings) {
+        let pairing = env.PAIRING.get(
+          env.PAIRING.idFromName(id),
+        ) as unknown as DurableObjectStub<RoomDO>;
+        await pairing.setClock(time, command.wall);
+        if (command.action === 'restart-pairings') {
+          try {
+            await pairing.restart();
+          } catch {
+            /* Deliberately discard volatile pairing state. */
+          }
+          pairing = env.PAIRING.get(
+            env.PAIRING.idFromName(id),
+          ) as unknown as DurableObjectStub<RoomDO>;
+        }
+        if (command.action === 'sweep') await pairing.sweep();
+        if (command.action === 'shutdown') await pairing.shutdown();
+        const current = await pairing.stats();
+        stats.pairings += current.rooms;
+        stats.sockets += current.sockets;
+        stats.upgrades += current.upgrades;
+      }
+      for (const id of networks) {
+        let network = env.NETWORK.get(
+          env.NETWORK.idFromName(id),
+        ) as unknown as DurableObjectStub<NetworkDO>;
+        await network.setClock(time, command.wall);
+        if (command.action === 'restart-networks') {
+          try {
+            await network.restart();
+          } catch {
+            /* Deliberately discard volatile network state. */
+          }
+          network = env.NETWORK.get(
+            env.NETWORK.idFromName(id),
+          ) as unknown as DurableObjectStub<NetworkDO>;
+        }
+        if (command.action === 'sweep') await network.sweep();
+        if (command.action === 'shutdown') await network.shutdown();
+        const current = await network.stats();
+        stats.networks += current.networks;
         stats.sockets += current.sockets;
         stats.upgrades += current.upgrades;
       }
@@ -177,9 +271,50 @@ export default {
         get: (id: DurableObjectId) => {
           const stub = env.ROOM.get(id) as unknown as DurableObjectStub<RoomDO>;
           return {
-            async create(room: string, receiver: Uint8Array, sender: Uint8Array) {
+            async create(
+              room: string,
+              receiver: Uint8Array,
+              sender: Uint8Array,
+              capacityKey?: string,
+            ) {
               await stub.setClock(time, wall);
-              return stub.create(room, receiver, sender);
+              return stub.create(room, receiver, sender, capacityKey);
+            },
+            fetch: (input: RequestInfo, init?: RequestInit) => stub.fetch(input, init),
+          };
+        },
+      },
+      PAIRING: {
+        idFromName: (name: string) => env.PAIRING.idFromName(name),
+        get: (id: DurableObjectId) => {
+          const stub = env.PAIRING.get(id) as unknown as DurableObjectStub<RoomDO>;
+          return {
+            async create(
+              pair: string,
+              receiver: Uint8Array,
+              controller: Uint8Array,
+              capacityKey?: string,
+            ) {
+              await stub.setClock(time, wall);
+              return stub.create(pair, receiver, controller, capacityKey);
+            },
+            fetch: (input: RequestInfo, init?: RequestInit) => stub.fetch(input, init),
+          };
+        },
+      },
+      NETWORK: {
+        idFromName: (name: string) => env.NETWORK.idFromName(name),
+        get: (id: DurableObjectId) => {
+          const stub = env.NETWORK.get(id) as unknown as DurableObjectStub<NetworkDO>;
+          return {
+            async create(
+              network: string,
+              controllerId: string,
+              controllerHash: Uint8Array,
+              capacityKey?: string,
+            ) {
+              await stub.setClock(time, wall);
+              return stub.create(network, controllerId, controllerHash, capacityKey);
             },
             fetch: (input: RequestInfo, init?: RequestInit) => stub.fetch(input, init),
           };
@@ -190,6 +325,14 @@ export default {
     if (response.status === 201 && new URL(request.url).pathname === '/api/v1/rooms') {
       const result = await response.clone().json<{ room: string }>();
       rooms.add(result.room);
+    }
+    if (response.status === 201 && new URL(request.url).pathname === '/api/v2/pairings') {
+      const result = await response.clone().json<{ pair: string }>();
+      pairings.add(result.pair);
+    }
+    if (response.status === 201 && new URL(request.url).pathname === '/api/v2/networks') {
+      const result = await response.clone().json<{ network: string }>();
+      networks.add(result.network);
     }
     return response;
   },

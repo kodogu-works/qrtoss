@@ -1,0 +1,61 @@
+{
+  "pair": "YGFiY2RlZmdoaWprbG1ubw",
+  "peer": "cHFyc3R1dnd4eXp7fH1-fw",
+  "psk": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "rNonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "sNonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+  "senderProof": "1fZckeAOR5Q3VVOn1zNSzIWGBmjJfZj8FLRGU-Hd_-Q",
+  "receiverProof": "JE7qJu6OL-IV826r7B3XAs0eRbmKrDGNZIHTYNBpm6M",
+  "readyCiphertext": "CoEuWuT-mHfftIDLYI9FAW96KdJxAOqx4DT40lnqj10",
+  "network": "AAECAwQFBgcICQoLDA0ODw",
+  "from": "EBESExQVFhcYGRobHB0eHw",
+  "to": "ICEiIyQlJicoKSorLC0uLw",
+  "senderSecret": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+  "networkCodePublic": "BF2L_uaLC5PlEMq86N-gM6-a4InKFmUqmjUlcsrHJ9oNf6YQrxBzFYIbdW9W7fPmWLAb9_q3cC4tf3wO0I6tQYY",
+  "networkCode": "ZDTK-VJMR",
+  "signingPublic": "BF2L_uaLC5PlEMq86N-gM6-a4InKFmUqmjUlcsrHJ9oNf6YQrxBzFYIbdW9W7fPmWLAb9_q3cC4tf3wO0I6tQYY",
+  "memberAddition": {
+    "network": "AAECAwQFBgcICQoLDA0ODw",
+    "memberId": "EBESExQVFhcYGRobHB0eHw",
+    "idPub": "BLwi2o8eieJPeqwJelu5YLZcQe-4NZW3cpoFFq2OX8_kF9_3NC-McqCq5kgNjuRAgHFODvC4J3WRfnlBPxkw7DI",
+    "labelB64": "UEMtQTEyMw"
+  },
+  "memberSignature": "u2KPuenpLTVyqqwtHkCelcdemRjy-HmTIAbY9KCX8XBhrnra2SqNoZvrSMrYZ5nZe0fG7B_4fDfAU5lBEhhvag",
+  "textId": "ICEiIyQlJicoKSorLC0uLw",
+  "broadcastCiphertext": "CL0PN9BUbcaQUdZ6Zoz1ypoetweKuBsTi-YzX6qPBgUUgysDzH32pVvXXmBaJRm4SiZxMZ3HbfCppvlnqlYLvsDMqsr_oW-TTwC7kzDNKm6B",
+  "unicastCiphertext": "QXGbGjdyBieKrm-cJ0qRp_ZQffZVWdwuBjxz4Sy3_OEoIc5MqCvW8qf4Fb_lHk1GE5oQMnPC",
+  "ecdhA": {
+    "key_ops": ["deriveBits"],
+    "ext": true,
+    "kty": "EC",
+    "x": "vCLajx6J4k96rAl6W7lgtlxB77g1lbdymgUWrY5fz-Q",
+    "y": "F9_3NC-McqCq5kgNjuRAgHFODvC4J3WRfnlBPxkw7DI",
+    "crv": "P-256",
+    "d": "jGFd0-vxFNHki0Z3OGBpL6LaT75usMRIKz33ViuFXfE"
+  },
+  "ecdhAPublic": {
+    "key_ops": [],
+    "ext": true,
+    "kty": "EC",
+    "x": "vCLajx6J4k96rAl6W7lgtlxB77g1lbdymgUWrY5fz-Q",
+    "y": "F9_3NC-McqCq5kgNjuRAgHFODvC4J3WRfnlBPxkw7DI",
+    "crv": "P-256"
+  },
+  "ecdhB": {
+    "key_ops": ["deriveBits"],
+    "ext": true,
+    "kty": "EC",
+    "x": "YXTpO4zw9fPy51MwNnOc2BcyRknr3xG2yCig_2K-3oc",
+    "y": "6APn2EPPUDLzcnOsRkIpfwDjBhSQ1TFATi0CUxofPOE",
+    "crv": "P-256",
+    "d": "K2-kPeuV1T80geBr7-r0vyO62pMyB7YaWLcebIUEDoE"
+  },
+  "ecdhBPublic": {
+    "key_ops": [],
+    "ext": true,
+    "kty": "EC",
+    "x": "YXTpO4zw9fPy51MwNnOc2BcyRknr3xG2yCig_2K-3oc",
+    "y": "6APn2EPPUDLzcnOsRkIpfwDjBhSQ1TFATi0CUxofPOE",
+    "crv": "P-256"
+  }
+}

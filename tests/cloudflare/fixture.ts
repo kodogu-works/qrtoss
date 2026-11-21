@@ -49,6 +49,7 @@ export async function createCloudflareRelay(
       bindings: {
         PUBLIC_ORIGIN: origin,
         MAX_ROOMS: String(options.maxRooms ?? 1000),
+        MAX_NETWORKS: String(options.maxNetworks ?? 1000),
         MAX_SOCKETS: String(options.maxSockets ?? 2200),
         MAX_UNAUTHENTICATED_SOCKETS: String(options.maxUnauthenticatedSockets ?? 100),
         MAX_SOCKETS_PER_IP: String(options.maxSocketsPerIp ?? 60),
@@ -59,6 +60,8 @@ export async function createCloudflareRelay(
       },
       durableObjects: {
         ROOM: { className: 'RoomDO', useSQLite: true },
+        PAIRING: { className: 'PairingDO', useSQLite: true },
+        NETWORK: { className: 'NetworkDO', useSQLite: true },
         CAPACITY: { className: 'CapacityDO', useSQLite: true },
       },
       resourcePersistencePath: settings.persist,
@@ -92,12 +95,16 @@ export async function createCloudflareRelay(
     if (stopped)
       return {
         rooms: 0,
+        pairings: 0,
+        networks: 0,
         sockets: 0,
         capacity: {
           rooms: 0,
+          networks: 0,
           sockets: 0,
           unauthenticated: 0,
           releasedRooms: 0,
+          releasedNetworks: 0,
           releasedSockets: 0,
           ips: 0,
         },
@@ -138,7 +145,10 @@ export async function createCloudflareRelay(
   const wss = new WebSocketServer({
     noServer: true,
     perMessageDeflate: false,
-    handleProtocols: (protocols) => (protocols.has('qrtoss.v1') ? 'qrtoss.v1' : false),
+    handleProtocols: (protocols) =>
+      ['qrtoss.v1', 'qrtoss.share-pair.v1', 'qrtoss.share.v1'].find((protocol) =>
+        protocols.has(protocol),
+      ) ?? false,
   });
   server.on('upgrade', (req, socket, head) => {
     void (async () => {

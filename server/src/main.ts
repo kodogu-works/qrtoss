@@ -15,6 +15,7 @@ try {
     staticDir: resolve(process.env.STATIC_DIR ?? 'dist/web'),
     allowHttpLoopback: process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
     maxRooms: positive('MAX_ROOMS', 1000),
+    maxNetworks: positive('MAX_NETWORKS', 1000),
     maxSockets: positive('MAX_SOCKETS', 2200),
     maxUnauthenticatedSockets: positive('MAX_UNAUTHENTICATED_SOCKETS', 100),
     maxSocketsPerIp: positive('MAX_SOCKETS_PER_IP', 60),

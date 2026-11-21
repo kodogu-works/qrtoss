@@ -10,6 +10,10 @@ test('application URLs share the configured mount and stay on the public origin'
       sender: `${base}send`,
       rooms: `${base}api/v1/rooms`,
       socket: `${base}ws`,
+      pairings: `${base}api/v2/pairings`,
+      pairingSocket: `${base}api/v2/pairings/socket`,
+      networks: `${base}api/v2/networks`,
+      networkSocket: `${base}api/v2/networks/socket`,
     });
     for (const path of Object.values(paths)) {
       const url = new URL(path, 'https://myserver.example');

@@ -20,6 +20,7 @@ The default Compose subnet is `172.30.0.0/24`; change it and the trusted proxy C
 | `PORT` | `8080` | Internal HTTP/WebSocket port |
 | `NODE_ENV` | `production` | Only explicit `development`/`test` permits HTTP loopback origins |
 | `MAX_ROOMS` | `1000` | Concurrent room limit |
+| `MAX_NETWORKS` | `1000` | Concurrent volatile sharing-network limit |
 | `MAX_SOCKETS` | `2200` | Total WebSocket limit |
 | `MAX_UNAUTHENTICATED_SOCKETS` | `100` | Unauthenticated connection limit |
 | `MAX_SOCKETS_PER_IP` | `60` | Connection limit per IPv4 address or aggregated IPv6 prefix |
@@ -179,6 +180,7 @@ Replace `my-account` with your account subdomain. Both modes require one exact H
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MAX_ROOMS` | `1000` | Live room leases |
+| `MAX_NETWORKS` | `1000` | Live sharing-network leases |
 | `MAX_SOCKETS` | `2200` | All WebSocket leases |
 | `MAX_UNAUTHENTICATED_SOCKETS` | `100` | WebSockets awaiting authentication |
 | `MAX_SOCKETS_PER_IP` | `60` | Concurrent WebSockets per normalized IP key |

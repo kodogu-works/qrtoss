@@ -8,6 +8,7 @@ import { MAX_SOCKET_SEND_BYTES } from './limits.ts';
 export class RoomDO extends DurableObject<Env> {
   protected readonly core: ReturnType<typeof createRelayCore>;
   private initialized = false;
+  private capacityKey?: string;
   private sweepTimer?: ReturnType<typeof setTimeout>;
   private cancelLease?: () => void;
 
@@ -27,7 +28,7 @@ export class RoomDO extends DurableObject<Env> {
       onRoomClosed: (id) => {
         if (this.sweepTimer !== undefined) clearTimeout(this.sweepTimer);
         this.cancelLease?.();
-        this.ctx.waitUntil(bestEffort(capacity(this.env).releaseRoom(id)));
+        this.ctx.waitUntil(bestEffort(capacity(this.env).releaseRoom(this.capacityKey ?? id)));
       },
     });
   }
@@ -38,14 +39,15 @@ export class RoomDO extends DurableObject<Env> {
     return Date.now();
   }
 
-  create(id: string, receiverHash: Uint8Array, joinHash: Uint8Array) {
+  create(id: string, receiverHash: Uint8Array, joinHash: Uint8Array, capacityKey = id) {
     if (this.initialized || receiverHash.byteLength !== 32 || joinHash.byteLength !== 32)
       throw new Error('ROOM_UNAVAILABLE');
     this.initialized = true;
+    this.capacityKey = capacityKey;
     const deadlines = this.core.createRoom(id, receiverHash, joinHash);
     this.cancelLease = maintainLease(
       () => {
-        this.ctx.waitUntil(bestEffort(capacity(this.env).renewRoom(id)));
+        this.ctx.waitUntil(bestEffort(capacity(this.env).renewRoom(capacityKey)));
       },
       (callback, ms) => this.leaseTimeout(callback, ms),
     );
@@ -112,3 +114,6 @@ export class RoomDO extends DurableObject<Env> {
     });
   }
 }
+
+/** A distinct Durable Object namespace for the short-lived shared pairing transport. */
+export class PairingDO extends RoomDO {}

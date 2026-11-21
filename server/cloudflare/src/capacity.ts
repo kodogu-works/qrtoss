@@ -20,6 +20,15 @@ export class CapacityDO extends DurableObject<Env> {
   releaseRoom(id: string) {
     this.state.releaseRoom(id);
   }
+  acquireNetwork(id: string, ip: string) {
+    return this.state.acquireNetwork(id, ip);
+  }
+  renewNetwork(id: string) {
+    this.state.renewNetwork(id);
+  }
+  releaseNetwork(id: string) {
+    this.state.releaseNetwork(id);
+  }
   acquireSocket(id: string, ip: string) {
     return this.state.acquireSocket(id, ip);
   }

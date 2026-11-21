@@ -17,13 +17,19 @@
   "durable_objects": {
     "bindings": [
       { "name": "ROOM", "class_name": "RoomDO" },
+      { "name": "PAIRING", "class_name": "PairingDO" },
+      { "name": "NETWORK", "class_name": "NetworkDO" },
       { "name": "CAPACITY", "class_name": "CapacityDO" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDO", "CapacityDO"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RoomDO", "CapacityDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["PairingDO", "NetworkDO"] }
+  ],
   "vars": {
     "PUBLIC_ORIGIN": "https://qrtoss.example",
     "MAX_ROOMS": "1000",
+    "MAX_NETWORKS": "1000",
     "MAX_SOCKETS": "2200",
     "MAX_UNAUTHENTICATED_SOCKETS": "100",
     "MAX_SOCKETS_PER_IP": "60",

@@ -1,13 +1,17 @@
-import type { RoomDO } from './room.ts';
+import type { PairingDO, RoomDO } from './room.ts';
+import type { NetworkDO } from './network.ts';
 import type { CapacityDO } from './capacity.ts';
 import type { CapacityOptions } from '../../../packages/relay-core/src/capacity.ts';
 
 export interface Env {
   ROOM: DurableObjectNamespace<RoomDO>;
+  PAIRING: DurableObjectNamespace<PairingDO>;
+  NETWORK: DurableObjectNamespace<NetworkDO>;
   CAPACITY: DurableObjectNamespace<CapacityDO>;
   ASSETS: Fetcher;
   PUBLIC_ORIGIN: string;
   MAX_ROOMS?: string;
+  MAX_NETWORKS?: string;
   MAX_SOCKETS?: string;
   MAX_UNAUTHENTICATED_SOCKETS?: string;
   MAX_SOCKETS_PER_IP?: string;
@@ -23,6 +27,7 @@ export function positive(value: string | undefined, fallback: number) {
 export function capacityOptions(env: Env): CapacityOptions {
   return {
     maxRooms: positive(env.MAX_ROOMS, 1000),
+    maxNetworks: positive(env.MAX_NETWORKS, 1000),
     maxSockets: positive(env.MAX_SOCKETS, 2200),
     maxUnauthenticatedSockets: positive(env.MAX_UNAUTHENTICATED_SOCKETS, 100),
     maxSocketsPerIp: positive(env.MAX_SOCKETS_PER_IP, 60),

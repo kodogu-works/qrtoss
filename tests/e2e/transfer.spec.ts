@@ -157,6 +157,22 @@ for (const basePath of ['/', '/qrtoss/'])
       expect(qr).toBeTruthy();
       return qr!.data;
     }
+    async function sharedPairingURL(page: Page) {
+      await expect(page.locator('#shared-qr-loading')).toBeHidden({ timeout: 10_000 });
+      const image = await page.locator('#shared-qr').evaluate((canvas: HTMLCanvasElement) => ({
+        width: canvas.width,
+        height: canvas.height,
+        data: Array.from(
+          canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data,
+        ),
+      }));
+      const qr = jsQR(new Uint8ClampedArray(image.data), image.width, image.height);
+      expect(qr).toBeTruthy();
+      const url = new URL(qr!.data);
+      expect(url.origin + url.pathname).toBe(base + 'send');
+      expect(url.hash).toContain('#v=2&');
+      return url.href;
+    }
     async function fakeCamera(page: Page, payload: string, zoom = false) {
       const data = await QRCode.toDataURL(payload, {
         // Render at the displayed size so dense test codes are not resampled.
@@ -367,7 +383,7 @@ for (const basePath of ['/', '/qrtoss/'])
       r.on('pageerror', (e) => failures.push(e.message));
       s.on('pageerror', (e) => failures.push(e.message));
       await fakeCamera(s, payload, zoom);
-      await r.goto(base);
+      await r.goto(base + '?legacy=1');
       const url = await pairingURL(r);
       expect(new URL(url).origin + new URL(url).pathname).toBe(base + 'send');
       await s.goto(url);
@@ -388,8 +404,186 @@ for (const basePath of ['/', '/qrtoss/'])
         decoderWorkers: () => decoderWorkers,
       };
     }
+    test('integrated shared network connects two members and delivers text, file and QR data', async ({
+      browser,
+    }) => {
+      test.setTimeout(60_000);
+      const managerContext = await browser.newContext({ locale: 'en-US' });
+      const firstContext = await browser.newContext({ locale: 'en-US' });
+      const secondContext = await browser.newContext({ locale: 'en-US' });
+      const manager = await managerContext.newPage();
+      const first = await firstContext.newPage();
+      const second = await secondContext.newPage();
+      const failures: string[] = [];
+      const requests: string[] = [];
+      for (const page of [manager, first, second]) {
+        page.on('pageerror', (error) => failures.push(error.message));
+        page.on('request', (request) => {
+          const url = new URL(request.url());
+          if (url.protocol === 'http:' && url.origin === host.origin) requests.push(url.pathname);
+        });
+      }
+      try {
+        await first.goto(base);
+        const firstInvite = await sharedPairingURL(first);
+        await manager.goto(firstInvite);
+        await expect(manager).toHaveURL(base + 'send');
+        await expect(manager.locator('#shared-network')).toBeVisible({ timeout: 15_000 });
+        await expect(first.locator('#shared-network')).toBeVisible({ timeout: 15_000 });
+        await expect(manager.locator('#shared-member-list .member-row')).toHaveCount(1);
+        await expect(first.locator('#shared-member-list .member-row')).toHaveCount(1);
+        await expect(manager.locator('#shared-code')).not.toBeEmpty();
+        await expect(first.locator('#shared-code')).toHaveText(
+          (await manager.locator('#shared-code').textContent())!,
+        );
+
+        await second.goto(base);
+        const secondInvite = await sharedPairingURL(second);
+        const inviteImage = await QRCode.toBuffer(secondInvite, {
+          width: 320,
+          margin: 4,
+          errorCorrectionLevel: 'M',
+        });
+        await manager.locator('#shared-photo-input').setInputFiles({
+          name: 'member-invite.png',
+          mimeType: 'image/png',
+          buffer: inviteImage,
+        });
+        await expect(second.locator('#shared-confirm')).toBeVisible({ timeout: 15_000 });
+        await expect(second.locator('#shared-confirm-code')).toHaveText(
+          (await manager.locator('#shared-code').textContent())!,
+        );
+        await second.locator('#shared-accept').click();
+        for (const page of [manager, first, second]) {
+          await expect(page.locator('#shared-network')).toBeVisible({ timeout: 15_000 });
+          await expect(page.locator('#shared-member-list .member-row')).toHaveCount(2, {
+            timeout: 15_000,
+          });
+        }
+        await expect(manager.locator('#shared-composer')).toBeHidden();
+        await expect(first.locator('#shared-composer')).toBeVisible();
+        await expect(second.locator('#shared-composer')).toBeVisible();
+
+        const text = 'shared text <b>stays literal</b>';
+        await first.locator('#shared-text-input').fill(text);
+        await first.locator('#shared-send-text').click();
+        await expect(second.locator('#shared-received-list .received-text')).toHaveText(text, {
+          timeout: 15_000,
+        });
+        await expect(second.locator('#shared-received-list').locator('b')).toHaveCount(0);
+
+        await first.locator('#shared-file-input').setInputFiles({
+          name: 'shared-fixture.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('file payload'),
+        });
+        await expect(first.locator('#shared-send-files')).toBeVisible();
+        await first.locator('#shared-send-files').click();
+        await expect(second.locator('#shared-received-list')).toContainText('shared-fixture.txt', {
+          timeout: 15_000,
+        });
+
+        const qrText = 'plain QR payload for the selected member';
+        const qrImage = await QRCode.toBuffer(qrText, {
+          width: 320,
+          margin: 4,
+          errorCorrectionLevel: 'M',
+        });
+        await manager.locator('#shared-photo-input').setInputFiles({
+          name: 'ordinary-qr.png',
+          mimeType: 'image/png',
+          buffer: qrImage,
+        });
+        await expect(manager.locator('#shared-qr-text')).toHaveText(qrText, {
+          timeout: 10_000,
+        });
+        await manager.locator('#shared-send-qr').click();
+        await expect(first.locator('#shared-qr-result-text')).toHaveText(qrText, {
+          timeout: 10_000,
+        });
+        await expect(second.locator('#shared-qr-result')).toBeHidden();
+
+        expect(failures).toEqual([]);
+        expect(requests).toContain(basePath + 'api/v2/pairings');
+        expect(requests).toContain(basePath + 'api/v2/networks');
+        expect(requests.every((path) => path.startsWith(basePath))).toBe(true);
+      } finally {
+        await Promise.all([managerContext.close(), firstContext.close(), secondContext.close()]);
+      }
+    });
+    test('integrated manager uses a legacy receiver as a one-transfer QR destination', async ({
+      browser,
+    }) => {
+      test.setTimeout(45_000);
+      const managerContext = await browser.newContext({ locale: 'en-US' });
+      const sharedContext = await browser.newContext({ locale: 'en-US' });
+      const legacyContext = await browser.newContext({ locale: 'en-US' });
+      const manager = await managerContext.newPage();
+      const shared = await sharedContext.newPage();
+      const legacy = await legacyContext.newPage();
+      const failures: string[] = [];
+      for (const page of [manager, shared, legacy])
+        page.on('pageerror', (error) => failures.push(error.message));
+      try {
+        await shared.goto(base);
+        await manager.goto(await sharedPairingURL(shared));
+        await expect(manager.locator('#shared-member-list .member-row')).toHaveCount(1, {
+          timeout: 15_000,
+        });
+
+        // A v1/CLI receiver is allowed only while the normal-QR destination is unset.
+        await manager
+          .locator('#shared-member-list .member-row')
+          .getByRole('button', { name: 'Disconnect' })
+          .click();
+        await expect(manager.locator('#shared-member-list .member-row')).toHaveCount(0, {
+          timeout: 10_000,
+        });
+        await expect(manager.locator('#shared-target')).toHaveText(
+          'No QR destination is selected.',
+        );
+
+        await legacy.goto(base + '?legacy=1');
+        const legacyInvite = await pairingURL(legacy);
+        await manager.locator('#shared-photo-input').setInputFiles({
+          name: 'legacy-invite.png',
+          mimeType: 'image/png',
+          buffer: await QRCode.toBuffer(legacyInvite, {
+            width: 320,
+            margin: 4,
+            errorCorrectionLevel: 'M',
+          }),
+        });
+        await expect(manager.locator('#shared-target')).toContainText('legacy receiver', {
+          timeout: 15_000,
+        });
+        await expect(legacy.locator('#qr')).toHaveAccessibleName('Used connection QR code');
+
+        const payload = 'legacy CLI-compatible QR payload';
+        await manager.locator('#shared-photo-input').setInputFiles({
+          name: 'legacy-payload.png',
+          mimeType: 'image/png',
+          buffer: await QRCode.toBuffer(payload, {
+            width: 320,
+            margin: 4,
+            errorCorrectionLevel: 'M',
+          }),
+        });
+        await expect(manager.locator('#shared-qr-text')).toHaveText(payload, {
+          timeout: 10_000,
+        });
+        await manager.locator('#shared-send-qr').click();
+        await expect(legacy.locator('#receiver-text')).toHaveText(payload, { timeout: 10_000 });
+        await expect(manager.locator('#shared-target')).toHaveText(
+          'No QR destination is selected.',
+        );
+        expect(failures).toEqual([]);
+      } finally {
+        await Promise.all([managerContext.close(), sharedContext.close(), legacyContext.close()]);
+      }
+    });
     test('minimal receiver keeps QR and expiry in view in every language', async ({ page }) => {
-      await page.goto(base);
+      await page.goto(base + '?legacy=1');
       await pairingURL(page);
       for (const viewport of [
         { width: 1440, height: 900 },
@@ -445,7 +639,7 @@ for (const basePath of ['/', '/qrtoss/'])
     });
 
     test('language keyboard focus, reload and GitHub link are usable', async ({ page }) => {
-      await page.goto(base);
+      await page.goto(base + '?legacy=1');
       const original = await pairingURL(page);
       await page.locator('#language').focus();
       await expect(page.locator('#language')).toHaveCSS('outline-style', 'solid');
@@ -480,7 +674,7 @@ for (const basePath of ['/', '/qrtoss/'])
         s = await sc.newPage();
       try {
         await r.setViewportSize({ width: 375, height: 667 });
-        await r.goto(base);
+        await r.goto(base + '?legacy=1');
         const original = await pairingURL(r);
         const geometry = () =>
           r.evaluate(() =>
@@ -612,7 +806,7 @@ for (const basePath of ['/', '/qrtoss/'])
             fullPage: true,
           });
         }
-        await s.goto(base);
+        await s.goto(base + '?legacy=1');
         expect(await s.evaluate(() => document.querySelector('video'))).toBeNull();
         await expect(r.locator('#expiry')).toHaveText('0 seconds');
       } finally {
@@ -834,7 +1028,7 @@ for (const basePath of ['/', '/qrtoss/'])
         await expect(s.locator('a.wordmark')).toHaveAttribute('href', basePath);
         await s.locator('a.wordmark').click();
         await expect(s).toHaveURL(base);
-        await expect(s.locator('#qr')).toBeVisible();
+        await expect(s.locator('#shared-qr')).toBeVisible();
       } finally {
         await rc.close();
         await sc.close();
@@ -947,7 +1141,7 @@ for (const basePath of ['/', '/qrtoss/'])
       page.on('websocket', () => sockets++);
       await page.goto(base + 'send#v=1&r=secret&j=x&k=x');
       await expect(page).toHaveURL(base + 'send');
-      await expect(page.locator('#error')).toBeVisible();
+      await expect(page.getByRole('alert')).toBeVisible();
       expect(sockets).toBe(0);
     });
 
@@ -987,7 +1181,7 @@ for (const basePath of ['/', '/qrtoss/'])
             else ws.send(message);
           });
         });
-        await r.goto(fixture.base);
+        await r.goto(fixture.base + '?legacy=1');
         const url = await pairingURL(r);
         await s.goto(url);
         const release = await committed.promise;
@@ -1043,7 +1237,7 @@ for (const basePath of ['/', '/qrtoss/'])
               else ws.send(message);
             });
           });
-          await r.goto(fixture.base);
+          await r.goto(fixture.base + '?legacy=1');
           const url = await pairingURL(r);
           await s.goto(url);
           const release = await proof.promise;

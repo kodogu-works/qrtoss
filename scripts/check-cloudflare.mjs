@@ -71,6 +71,8 @@ check(
   JSON.stringify(config.durable_objects?.bindings) ===
     JSON.stringify([
       { name: 'ROOM', class_name: 'RoomDO' },
+      { name: 'PAIRING', class_name: 'PairingDO' },
+      { name: 'NETWORK', class_name: 'NetworkDO' },
       { name: 'CAPACITY', class_name: 'CapacityDO' },
     ]),
   'CLOUDFLARE_DO_BINDINGS',
@@ -82,6 +84,14 @@ check(
       migration.new_sqlite_classes?.includes('CapacityDO'),
   ),
   'CLOUDFLARE_SQLITE_MIGRATION',
+);
+check(
+  config.migrations?.some(
+    (migration) =>
+      migration.new_sqlite_classes?.includes('PairingDO') &&
+      migration.new_sqlite_classes?.includes('NetworkDO'),
+  ),
+  'CLOUDFLARE_NETWORK_MIGRATION',
 );
 const forbidden = new Set([
   'storage',

@@ -108,6 +108,14 @@ On Linux amd64 with Node.js 26.13.1 and Go 1.26.2, all 168 Node tests and all 57
 
 These local checks do not establish deployed `workers.dev` routing, Cloudflare's Browser Integrity Check, deployed CLI/browser connections or the pending review 7.8 acceptance items. No Cloudflare account deployment or real-device test was performed for this change.
 
+## Integrated sharing-network implementation verification
+
+The 2026-11-21 implementation adds the shared protocol definitions and vectors, pairing and network state machines, Node and Cloudflare adapters, browser controller/member flows, encrypted text and file batches, explicit QR targets, the one-time legacy CLI target, per-recipient results, cancellation and bounded receive state. The shared relay now binds every member invitation to its issue epoch. Any membership change revokes all other pending invitations before publishing `member.added` or `member.removed`; consumed and expired capability digests are retained only in volatile memory, for at most 64 entries and 120 seconds.
+
+The final 2026-11-21 working tree passed all 217 Node.js 26 tests, including the existing v1, real-Go CLI interoperability, protocol/vector, relay, shared network-core, content, storage, handoff and mesh regressions. The Go CLI unit tests also passed with the local Go 1.26 toolchain. The Cloudflare test command passed all 60 tests against local workerd, including the three shared PairingDO/NetworkDO cases. Chromium passed all 40 E2E cases across both root and `/qrtoss/` subpath deployments; these include shared Web participants, encrypted text/file/QR delivery and a legacy CLI receiver used as a one-time QR target. TypeScript checks for the Node/Web and Cloudflare configurations, generated-definition and i18n consistency checks, Biome lint/format checks, the production Web and Node server builds, and Compose configuration validation with an explicit test origin also passed.
+
+This evidence is local and does not establish every NT01–NT28 acceptance condition. Firefox and WebKit were not rerun for this implementation, and no public Node or Cloudflare deployment, real iPhone/Android camera flow, cross-network real-device transfer, browser background/lock behavior, production non-persistence metric, independent external security audit or final release signing was performed. Those items remain release evidence rather than inferred results of the automated suite.
+
 ## Required manual release evidence
 
 - iPhone/iPad Safari and Android Chrome: standard-camera connection handoff, permissions, rear camera, scanner Worker path, sleep/background/resume and explicit external-app opening.

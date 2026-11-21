@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "messages": [
+    { "type": "auth", "targets": ["server"], "fields": ["role", "network", "cap"] },
+    {
+      "type": "auth.ok", "targets": ["controller"], "when": { "role": "controller" },
+      "fields": ["role", "network", "controllerId", "epoch", "members", "controllerPresent", "admissionsOpen", "serverTime", "idleExpiresAt", "maxExpiresAt"]
+    },
+    {
+      "type": "auth.ok", "targets": ["member"], "when": { "role": "member" },
+      "fields": ["role", "network", "memberId", "epoch", "members", "controllerPresent", "admissionsOpen", "serverTime", "idleExpiresAt", "maxExpiresAt"]
+    },
+    { "type": "hb.ping", "targets": ["server"], "fields": ["id"] },
+    { "type": "hb.pong", "targets": ["controller", "member"], "fields": ["id", "serverTime"] },
+    { "type": "member.invite", "targets": ["server"], "fields": ["memberId", "idPub", "labelB64", "sig"] },
+    { "type": "member.invited", "targets": ["controller"], "fields": ["memberId", "memberCap", "memberExpiresAt"] },
+    { "type": "member.revoke", "targets": ["server"], "fields": ["memberId"] },
+    { "type": "member.revoked", "targets": ["controller"], "fields": ["memberId", "code"] },
+    { "type": "member.kick", "targets": ["server"], "fields": ["memberId"] },
+    { "type": "controller.join", "targets": ["server"], "fields": ["memberId", "idPub", "labelB64", "sig"] },
+    { "type": "controller.part", "targets": ["server"], "fields": [] },
+    { "type": "net.leave", "targets": ["server"], "fields": [] },
+    { "type": "net.close", "targets": ["server"], "fields": [] },
+    { "type": "net.touch", "targets": ["server"], "fields": [] },
+    { "type": "net.admissions", "targets": ["server"], "fields": ["open"] },
+    { "type": "member.added", "targets": ["controller", "member"], "fields": ["epoch", "memberId", "idPub", "labelB64", "sig"] },
+    { "type": "member.removed", "targets": ["controller", "member"], "fields": ["epoch", "memberId", "reason"] },
+    { "type": "controller.gone", "targets": ["member"], "fields": [] },
+    { "type": "net.state", "targets": ["controller"], "fields": ["admissionsOpen", "epoch", "controllerMemberId", "members", "pending"] },
+    { "type": "net.touched", "targets": ["controller", "member"], "fields": ["serverTime", "idleExpiresAt"] },
+    { "type": "net.closed", "targets": ["controller", "member"], "fields": ["code"] },
+    { "type": "ucast", "targets": ["server"], "fields": ["as", "to", "seq", "ct"] },
+    { "type": "ucast", "targets": ["controller", "member"], "fields": ["network", "from", "to", "seq", "ct"] },
+    { "type": "bcast", "targets": ["server"], "fields": ["epoch", "seq", "ct"] },
+    { "type": "bcast", "targets": ["controller", "member"], "fields": ["network", "from", "epoch", "seq", "ct"] },
+    { "type": "flow.ack", "targets": ["server"], "fields": ["bytes"] },
+    { "type": "error", "targets": ["controller", "member"], "fields": ["code", "scope"] }
+  ]
+}

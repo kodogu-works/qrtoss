@@ -6,8 +6,14 @@ import { resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { C } from '../../packages/protocol/src/constants.ts';
-import { hasExactFields } from '../../packages/protocol/src/validation.ts';
+import { SC } from '../../packages/protocol/src/shared-constants.ts';
+import {
+  decodeBase64,
+  hasExactFields,
+  ProtocolError,
+} from '../../packages/protocol/src/validation.ts';
 import { createRelayCore } from '../../packages/relay-core/src/index.ts';
+import { createNetworkCore } from '../../packages/relay-core/src/network.ts';
 import { IpLimits, take } from '../../packages/relay-core/src/limits.ts';
 import {
   publicOrigin,
@@ -26,6 +32,7 @@ export interface RelayOptions {
   wallNow?: () => number;
   allowHttpLoopback?: boolean;
   maxRooms?: number;
+  maxNetworks?: number;
   maxSockets?: number;
   maxUnauthenticatedSockets?: number;
   maxSocketsPerIp?: number;
@@ -40,18 +47,23 @@ export function createRelay(options: RelayOptions) {
   const now = options.now ?? (() => performance.now());
   const wallNow = options.wallNow ?? (() => Date.now());
   const ips = new IpLimits();
-  const core = createRelayCore({
+  const coreOptions = {
     now,
     wallNow,
     random,
-    digest: async (value) => digest(value),
-    equal: async (a, b) => timingSafeEqual(a, b),
-    canAuthenticate: (ip) => ips.canAuthenticate(ip, now()),
-    authenticationFailed: (ip) => ips.authenticationFailed(ip, now()),
-  });
-  const { clients } = core;
+    digest: async (value: string) => digest(value),
+    equal: async (a: Uint8Array, b: Uint8Array) => timingSafeEqual(a, b),
+    canAuthenticate: (ip: string) => ips.canAuthenticate(ip, now()),
+    authenticationFailed: (ip: string) => ips.authenticationFailed(ip, now()),
+  };
+  const core = createRelayCore(coreOptions);
+  const pairingCore = createRelayCore(coreOptions);
+  const networkCore = createNetworkCore(coreOptions);
+  const allClients = () => [...core.clients, ...pairingCore.clients, ...networkCore.clients];
   function sweep() {
     core.sweep();
+    pairingCore.sweep();
+    networkCore.sweep();
     ips.sweep(now());
   }
   const trusted = new BlockList();
@@ -62,13 +74,14 @@ export function createRelay(options: RelayOptions) {
   }
   let stopping = false;
   const maxRooms = options.maxRooms ?? 1000;
+  const maxNetworks = options.maxNetworks ?? 1000;
   const maxSockets = options.maxSockets ?? 2200;
   const maxUnauthenticated = options.maxUnauthenticatedSockets ?? 100;
   const maxPerIp = options.maxSocketsPerIp ?? 60;
   const ipv6PrefixLength = options.ipv6PrefixLength ?? 64;
   if (!Number.isInteger(ipv6PrefixLength) || ipv6PrefixLength < 1 || ipv6PrefixLength > 128)
     throw new Error('IPV6_PREFIX_LENGTH_INVALID');
-  for (const limit of [maxRooms, maxSockets, maxUnauthenticated, maxPerIp]) {
+  for (const limit of [maxRooms, maxNetworks, maxSockets, maxUnauthenticated, maxPerIp]) {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('LIMIT_INVALID');
   }
   const server = createServer((req, res) => {
@@ -104,17 +117,36 @@ export function createRelay(options: RelayOptions) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(code ? { v: 1, error: { code } } : data));
   }
+  const bodyTooLarge = Symbol('bodyTooLarge');
+  async function readJson(req: IncomingMessage, maximum: number): Promise<unknown> {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > maximum) {
+        req.resume();
+        return bodyTooLarge;
+      }
+      chunks.push(chunk);
+    }
+    try {
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch {
+      return undefined;
+    }
+  }
   async function http(req: IncomingMessage, res: ServerResponse) {
     const path = req.url?.split('?')[0];
-    if (req.url?.includes('?') && path === '/api/v1/rooms')
-      return reply(res, 400, 'PROTOCOL_ERROR');
+    const createPath =
+      path === '/api/v1/rooms' || path === '/api/v2/pairings' || path === '/api/v2/networks';
+    if (req.url?.includes('?') && createPath) return reply(res, 400, 'PROTOCOL_ERROR');
     if (path === '/healthz' || path === '/readyz') {
       if (req.method !== 'GET') return reply(res, 405, 'PROTOCOL_ERROR');
       return path === '/readyz' && stopping
         ? reply(res, 503, 'SERVER_SHUTDOWN')
         : reply(res, 200, undefined, { status: path === '/healthz' ? 'ok' : 'ready' });
     }
-    if (path === '/api/v1/rooms') {
+    if (createPath) {
       if (req.method !== 'POST') return reply(res, 405, 'PROTOCOL_ERROR');
       if (req.headers.origin !== options.publicOrigin) return reply(res, 403, 'ORIGIN_DENIED');
       if (stopping) return reply(res, 503, 'SERVER_SHUTDOWN');
@@ -125,39 +157,60 @@ export function createRelay(options: RelayOptions) {
         res.setHeader('Retry-After', '6');
         return reply(res, 429, 'RATE_LIMITED');
       }
-      let size = 0;
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        size += chunk.length;
-        if (size > C.MAX_CONTROL_MESSAGE_BYTES) {
-          reply(res, 413, 'MESSAGE_TOO_LARGE');
-          req.resume();
-          return;
-        }
-        chunks.push(chunk);
-      }
-      let body: unknown;
-      try {
-        body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      } catch {
-        return reply(res, 400, 'PROTOCOL_ERROR');
-      }
-      if (!body || typeof body !== 'object' || Array.isArray(body) || !hasExactFields(body, ['v']))
+      const body = await readJson(
+        req,
+        path === '/api/v2/networks'
+          ? SC.NETWORK_MAX_CONTROL_MESSAGE_BYTES
+          : C.MAX_CONTROL_MESSAGE_BYTES,
+      );
+      if (body === bodyTooLarge) return reply(res, 413, 'MESSAGE_TOO_LARGE');
+      const fields = path === '/api/v2/networks' ? ['v', 'controllerId'] : ['v'];
+      if (!body || typeof body !== 'object' || Array.isArray(body) || !hasExactFields(body, fields))
         return reply(res, 400, 'PROTOCOL_ERROR');
       if ((body as Json).v !== 1) return reply(res, 400, 'VERSION_UNSUPPORTED');
       sweep();
-      if (core.stats().rooms >= maxRooms) return reply(res, 503, 'CAPACITY');
-      const id = random(16),
-        receiverCap = random(32),
-        senderJoinCap = random(32);
-      const deadlines = core.createRoom(id, digest(receiverCap), digest(senderJoinCap));
-      return reply(res, 201, undefined, {
-        v: 1,
-        room: id,
-        receiverCap,
-        senderJoinCap,
-        ...deadlines,
-      });
+      if (path === '/api/v2/networks') {
+        const controllerId = (body as Json).controllerId;
+        try {
+          if (typeof controllerId !== 'string') throw new ProtocolError();
+          decodeBase64(controllerId, 16);
+        } catch {
+          return reply(res, 400, 'PROTOCOL_ERROR');
+        }
+        if (networkCore.stats().networks >= maxNetworks) return reply(res, 503, 'CAPACITY');
+        const network = random(16);
+        const controllerCap = random(32);
+        const deadlines = networkCore.createNetwork(network, controllerId, digest(controllerCap));
+        return reply(res, 201, undefined, {
+          v: 1,
+          network,
+          controllerCap,
+          ...deadlines,
+        });
+      }
+      const selected = path === '/api/v1/rooms' ? core : pairingCore;
+      // Legacy rooms and short-lived v2 pairing rooms share the same bounded pool,
+      // matching CapacityDO's acquireRoom accounting.
+      if (core.stats().rooms + pairingCore.stats().rooms >= maxRooms)
+        return reply(res, 503, 'CAPACITY');
+      const id = random(16);
+      const receiverCap = random(32);
+      const joinCap = random(32);
+      const deadlines = selected.createRoom(id, digest(receiverCap), digest(joinCap));
+      return reply(
+        res,
+        201,
+        undefined,
+        path === '/api/v1/rooms'
+          ? { v: 1, room: id, receiverCap, senderJoinCap: joinCap, ...deadlines }
+          : {
+              v: 1,
+              pair: id,
+              receiverCap,
+              controllerJoinCap: joinCap,
+              ...deadlines,
+            },
+      );
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return reply(res, 405, 'PROTOCOL_ERROR');
     if (!options.staticDir) return reply(res, 404, 'PROTOCOL_ERROR');
@@ -195,36 +248,64 @@ export function createRelay(options: RelayOptions) {
         `HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n\r\n${JSON.stringify({ v: 1, error: { code } })}`,
       );
     }
-    if (req.url !== '/ws') return reject(404, 'PROTOCOL_ERROR');
+    const route =
+      req.url === '/ws'
+        ? { kind: 'room' as const, protocol: 'qrtoss.v1' }
+        : req.url === '/api/v2/pairings/socket'
+          ? { kind: 'pairing' as const, protocol: 'qrtoss.share-pair.v1' }
+          : req.url === '/api/v2/networks/socket'
+            ? { kind: 'network' as const, protocol: 'qrtoss.share.v1' }
+            : undefined;
+    if (!route) return reject(404, 'PROTOCOL_ERROR');
     if (req.headers.origin !== options.publicOrigin) return reject(403, 'ORIGIN_DENIED');
-    if (!acceptsWebSocketProtocol(req.headers['sec-websocket-protocol']))
+    if (!acceptsWebSocketProtocol(req.headers['sec-websocket-protocol'], route.protocol))
       return reject(400, 'VERSION_UNSUPPORTED');
     if (stopping) return reject(503, 'SERVER_SHUTDOWN');
     const ip = ipOf(req);
+    const clients = allClients();
     if (
-      clients.size >= maxSockets ||
+      clients.length >= maxSockets ||
       [...clients].filter((c) => !c.role).length >= maxUnauthenticated ||
       [...clients].filter((c) => c.ip === ip).length >= maxPerIp
     )
       return reject(503, 'CAPACITY');
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const client = core.connect(ws, ip);
-      ws.on('message', (raw, binary) => {
-        void core
-          .message(client, Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer), binary)
-          .catch(() => core.fail(client, 'SERVER_ERROR', 1011));
-      });
-      ws.on('error', (error) => {
-        const oversized =
-          (error as Error & { code?: string }).code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
-        if (client.room)
-          core.fail(
+      if (route.kind === 'network') {
+        const client = networkCore.connect(ws, ip);
+        ws.on('message', (raw, binary) => {
+          void networkCore
+            .message(client, Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer), binary)
+            .catch(() => networkCore.fail(client, 'SERVER_ERROR', 1011));
+        });
+        ws.on('error', (error) => {
+          const oversized =
+            (error as Error & { code?: string }).code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
+          networkCore.fail(
             client,
             oversized ? 'MESSAGE_TOO_LARGE' : 'PROTOCOL_ERROR',
             oversized ? 1009 : 1008,
           );
+        });
+        ws.on('close', () => networkCore.disconnect(client));
+        return;
+      }
+      const selected = route.kind === 'room' ? core : pairingCore;
+      const client = selected.connect(ws, ip);
+      ws.on('message', (raw, binary) => {
+        void selected
+          .message(client, Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer), binary)
+          .catch(() => selected.fail(client, 'SERVER_ERROR', 1011));
       });
-      ws.on('close', () => core.disconnect(client));
+      ws.on('error', (error) => {
+        const oversized =
+          (error as Error & { code?: string }).code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
+        selected.fail(
+          client,
+          oversized ? 'MESSAGE_TOO_LARGE' : 'PROTOCOL_ERROR',
+          oversized ? 1009 : 1008,
+        );
+      });
+      ws.on('close', () => selected.disconnect(client));
     });
   });
   server.requestTimeout = 15000;
@@ -234,7 +315,17 @@ export function createRelay(options: RelayOptions) {
   return {
     server,
     sweep,
-    stats: core.stats,
+    stats() {
+      const room = core.stats();
+      const pairing = pairingCore.stats();
+      const network = networkCore.stats();
+      return {
+        rooms: room.rooms,
+        sockets: room.sockets + pairing.sockets + network.sockets,
+        pairings: pairing.rooms,
+        networks: network.networks,
+      };
+    },
     async listen(port = 0, host = '127.0.0.1') {
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject);
@@ -251,8 +342,10 @@ export function createRelay(options: RelayOptions) {
       stopping = true;
       clearInterval(interval);
       core.shutdown();
+      pairingCore.shutdown();
+      networkCore.shutdown();
       const timer = setTimeout(() => {
-        for (const c of clients) (c.ws as WebSocket).terminate();
+        for (const c of allClients()) (c.ws as WebSocket).terminate();
       }, 1000);
       timer.unref();
       await Promise.all([

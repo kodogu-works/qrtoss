@@ -19,6 +19,10 @@ export function createAppPaths(basePath: string) {
     sender: `${base}send`,
     rooms: `${base}api/v1/rooms`,
     socket: `${base}ws`,
+    pairings: `${base}api/v2/pairings`,
+    pairingSocket: `${base}api/v2/pairings/socket`,
+    networks: `${base}api/v2/networks`,
+    networkSocket: `${base}api/v2/networks/socket`,
   } as const;
 }
 

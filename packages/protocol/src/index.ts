@@ -23,6 +23,8 @@ export { C };
 export { ERROR_CODES, CLOSE_REASONS } from './constants.ts';
 export const PROTOCOL = 'qrtoss/1';
 export const SUBPROTOCOL = 'qrtoss.v1';
+export * from './shared.ts';
+export * from './shared-control.ts';
 export function randomToken(bytes: number): string {
   return encodeBase64(crypto.getRandomValues(new Uint8Array(bytes)));
 }

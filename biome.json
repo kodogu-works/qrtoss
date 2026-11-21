@@ -17,7 +17,9 @@
       "tsconfig.json",
       "biome.json",
       "!packages/protocol/src/constants.ts",
-      "!packages/protocol/src/control.generated.ts"
+      "!packages/protocol/src/control.generated.ts",
+      "!packages/protocol/src/shared-constants.ts",
+      "!packages/protocol/src/shared-control.generated.ts"
     ]
   },
   "formatter": {
